@@ -1,0 +1,131 @@
+package com.grillpoet.mixy
+
+import android.content.Context
+import android.media.MediaMetadataRetriever
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.grillpoet.mixy.data.MediaCache
+import com.grillpoet.mixy.data.MediaRepository
+import com.grillpoet.mixy.data.MediaStoreDataSource
+import com.grillpoet.mixy.data.SettingsStore
+import com.grillpoet.mixy.data.model.MediaItem
+import com.grillpoet.mixy.data.model.MediaType
+import com.grillpoet.mixy.data.model.PlaylistCursor
+import com.grillpoet.mixy.player.MediaControllerManager
+import com.grillpoet.mixy.player.MusicPlayerController
+import com.grillpoet.mixy.player.VideoEngine
+import kotlinx.coroutines.flow.MutableStateFlow
+
+class AppContainer(context: Context) {
+
+    val appContext: Context = context.applicationContext
+
+    /** 外部 App 通过 ACTION_VIEW / ACTION_SEND 传入的 URI。 */
+    val externalUri = MutableStateFlow<Uri?>(null)
+
+    val settingsStore = SettingsStore(appContext)
+    val mediaCache = MediaCache()
+    val mediaDataSource = MediaStoreDataSource(appContext)
+    val mediaRepository = MediaRepository(mediaDataSource, mediaCache)
+    val controllerManager = MediaControllerManager(appContext)
+
+    /** 单例音乐控制器 */
+    val musicPlayerController: MusicPlayerController by lazy {
+        MusicPlayerController(this)
+    }
+
+    /** 视频引擎。懒加载，第一次看视频才创建 */
+    val videoEngine: VideoEngine by lazy {
+        VideoEngine(appContext)
+    }
+
+    var lastMusicCursor: PlaylistCursor? = null
+
+    /**
+     * 由外部传入的 content:// URI 构造一个只含单个媒体的 PlaylistCursor。
+     *
+     * TODO: 按你项目里 PlaylistCursor / MediaItem 的真实结构补全实现。
+     *   参考步骤：
+     *     1. appContext.contentResolver.query(uri, null, null, null, null)
+     *        读取 DISPLAY_NAME / SIZE / MIME_TYPE / DURATION 等字段
+     *     2. 构造一个 MediaItem（字段名以你的 data class 为准）
+     *     3. 返回 PlaylistCursor(items = listOf(item), index = 0, ...)
+     */
+    /**
+     * 由外部传入的 content:// URI 构造只含单个媒体的 PlaylistCursor。
+     * 用于响应 ACTION_VIEW / ACTION_SEND。
+     *
+     * 说明：
+     *  - id 用 uri.hashCode() 生成稳定负数转 Long，仅为本次播放使用
+     *  - folderPath 留空，folderName 固定为"外部"
+     *  - duration 仅对 video/audio 读取（MediaMetadataRetriever）
+     */
+    fun cursorFromExternalUri(uri: Uri): PlaylistCursor? {
+        val cr = appContext.contentResolver
+        val mime = cr.getType(uri) ?: return null
+
+        val type = when {
+            mime.startsWith("image/") -> MediaType.IMAGE
+            mime.startsWith("video/") -> MediaType.VIDEO
+            mime.startsWith("audio/") -> MediaType.AUDIO
+            mime.equals("application/pdf", ignoreCase = true) -> MediaType.PDF
+            else -> return null
+        }
+
+        var name = uri.lastPathSegment?.substringAfterLast('/') ?: "external"
+        var size = 0L
+        var dateModified = 0L
+
+        cr.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val nameIdx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (nameIdx >= 0) c.getString(nameIdx)?.let { name = it }
+
+                val sizeIdx = c.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIdx >= 0 && !c.isNull(sizeIdx)) size = c.getLong(sizeIdx)
+
+                val dateIdx = c.getColumnIndex("date_modified")
+                if (dateIdx >= 0 && !c.isNull(dateIdx)) dateModified = c.getLong(dateIdx)
+            }
+        }
+
+        val duration = if (type == MediaType.VIDEO || type == MediaType.AUDIO) {
+            readDuration(uri)
+        } else 0L
+
+        val item = MediaItem(
+            id = uri.toString().hashCode().toLong(),
+            uri = uri,
+            displayName = name,
+            folderPath = "",
+            folderName = "外部",
+            mimeType = mime,
+            size = size,
+            dateModified = dateModified,
+            duration = duration,
+            type = type
+        )
+
+        return PlaylistCursor(
+            items = listOf(item),
+            currentIndex = 0,
+            sourceType = type
+        )
+    }
+
+    /** 通过 MediaMetadataRetriever 读取时长（ms）。失败返回 0。 */
+    private fun readDuration(uri: Uri): Long {
+        val r = MediaMetadataRetriever()
+        return try {
+            r.setDataSource(appContext, uri)
+            r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+        } catch (_: Exception) {
+            0L
+        } finally {
+            try { r.release() } catch (_: Exception) { /* ignore */ }
+        }
+    }
+
+
+}

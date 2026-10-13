@@ -1,0 +1,67 @@
+# ==========================================
+# Android / Gradle 标准忽略
+# ==========================================
+# 构建输出
+build/
+app/build/
+out/
+bin/
+gen/
+release/
+*.apk
+*.aar
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Gradle 缓存与本地文件
+.gradle/
+gradle-app.setting
+.gradletasknamecache
+local.properties
+gradle-daemon-jvm.properties
+
+# IDE 配置
+.idea/
+*.iml
+.vscode/
+captures/
+.navigation/
+.externalNativeBuild
+.cxx/
+lint/intermediates/
+lint/generated/
+lint/outputs/
+lint/tmp/
+lint/reports/
+
+# Kotlin 缓存
+.kotlin/
+
+# 签名文件（千万不要提交）
+*.jks
+*.keystore
+!debug.keystore
+
+# 系统与日志文件
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+
+# ==========================================
+# Python 辅助脚本与生成文件（根据你实际情况决定）
+# ==========================================
+__pycache__/
+*.py[cod]
+venv/
+.env
+
+# 你用来提取和修改代码的脚本与生成物（建议不提交）
+dump.py
+modify.py
+code_dump.txt
+kt_files.txt
+out.txt

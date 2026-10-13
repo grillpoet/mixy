@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!-- 蓝色圆角方块，中心 (54,54)，边长 64 -->
+    <path
+        android:fillColor="#2563EB"
+        android:pathData="M38,22
+            h32
+            a16,16 0 0 1 16,16
+            v32
+            a16,16 0 0 1 -16,16
+            h-32
+            a16,16 0 0 1 -16,-16
+            v-32
+            a16,16 0 0 1 16,-16 z" />
+
+    <!-- 大空心圆环：中心 (54,55)，半径 15，描边 2.5 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2.5"
+        android:pathData="M54,40
+            A15,15 0 0 1 69,55
+            A15,15 0 0 1 54,70
+            A15,15 0 0 1 39,55
+            A15,15 0 0 1 54,40 Z" />
+
+    <!-- 小实心圆：中心 (60,61)，半径 3 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M60,58
+            A3,3 0 0 1 63,61
+            A3,3 0 0 1 60,64
+            A3,3 0 0 1 57,61
+            A3,3 0 0 1 60,58 Z" />
+</vector>

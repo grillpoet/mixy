@@ -1,0 +1,115 @@
+package com.grillpoet.mixy.ui
+
+import android.app.Activity
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.nav.Navigator
+import com.grillpoet.mixy.nav.Screen
+import com.grillpoet.mixy.ui.folder.FolderContentScreen
+import com.grillpoet.mixy.ui.folder.FolderListScreen
+import com.grillpoet.mixy.ui.image.ImageViewerScreen
+import com.grillpoet.mixy.ui.music.MusicPlayerScreen
+import com.grillpoet.mixy.ui.pdf.PdfViewerScreen
+import com.grillpoet.mixy.ui.settings.ExcludedPathsScreen
+import com.grillpoet.mixy.ui.settings.SettingsScreen
+import com.grillpoet.mixy.ui.video.VideoPlayerScreen
+import com.grillpoet.mixy.ui.widget.MiniBar
+
+@Composable
+fun AppRoot(container: AppContainer) {
+    val nav = remember { Navigator() }
+    val context = LocalContext.current
+
+    // 全局接管返回键
+    BackHandler(enabled = true) {
+        if (!nav.pop()) {
+            (context as? Activity)?.finish()
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            when (val screen = nav.current) {
+                is Screen.FolderList -> FolderListScreen(
+                    container = container,
+                    onNavigate = nav::push
+                )
+
+                is Screen.FolderContent -> key(screen) {
+                    FolderContentScreen(
+                        folder = screen.folder,
+                        container = container,
+                        onNavigate = nav::push
+                    )
+                }
+
+                is Screen.Settings -> key(screen) {
+                    SettingsScreen(
+                        container = container,
+                        onNavigate = nav::push
+                    )
+                }
+
+                is Screen.ExcludedPaths -> key(screen) {
+                    ExcludedPathsScreen(container = container)
+                }
+                is Screen.MusicPlayer -> key(screen) {
+                    MusicPlayerScreen(
+                        cursor = screen.cursor,
+                        container = container
+                    )
+                }
+
+                is Screen.ImageViewer -> key(screen) {
+                    ImageViewerScreen(cursor = screen.cursor)
+                }
+
+                is Screen.VideoPlayer -> key(screen) {
+                    VideoPlayerScreen(
+                        cursor = screen.cursor,
+                        container = container
+                    )
+                }
+                is Screen.PdfViewer -> key(screen) {
+                    PdfViewerScreen(cursor = screen.cursor)
+                }
+            }
+        }
+
+        // 迷你栏：不在音乐播放页时显示
+        val showMiniBar = nav.current !is Screen.MusicPlayer
+        if (showMiniBar) {
+            MiniBar(
+                container = container,
+                onOpenPlayer = {
+                    // ★ 用 container 记录的上一个 cursor，信息完整
+                    val cursor = container.lastMusicCursor ?: return@MiniBar
+                    if (nav.current !is Screen.MusicPlayer) {
+                        nav.push(Screen.MusicPlayer(cursor))
+                    }
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
+    }
+}

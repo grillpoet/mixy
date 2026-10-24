@@ -65,6 +65,13 @@ object PdfFileScanner {
         return result
     }
 
+    /**
+     * 递归遍历目录树。
+     *
+     * Row 的五个字段在循环体内全部用到，直接解构声明，避免 `child.xxx` 重复。
+     * Row 字段顺序固定（docId, name, mime, size, lastModified），
+     * 与 componentN() 对齐。
+     */
     private fun traverse(
         context: Context,
         treeUri: Uri,
@@ -78,31 +85,31 @@ object PdfFileScanner {
         if (out.size >= MAX_FILES) return
 
         val children = queryChildren(context, treeUri, parentDocId)
-        for (child in children) {
+        for ((docId, name, mime, size, lastModified) in children) {
             if (out.size >= MAX_FILES) return
 
-            if (child.mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                val subPath = if (parentPath.isBlank()) child.name
-                else "$parentPath/${child.name}"
+            if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
+                val subPath = if (parentPath.isBlank()) name
+                else "$parentPath/$name"
                 traverse(
-                    context, treeUri, child.docId, subPath,
+                    context, treeUri, docId, subPath,
                     out, depth + 1, onProgress
                 )
-            } else if (child.name.endsWith(".pdf", ignoreCase = true)) {
+            } else if (name.endsWith(".pdf", ignoreCase = true)) {
                 val childUri = DocumentsContract.buildDocumentUriUsingTree(
-                    treeUri, child.docId
+                    treeUri, docId
                 )
                 // parentPath 空时表示根目录
                 val folderPath = parentPath.ifBlank { "(root)" }
                 out += MediaItem(
-                    id = child.docId.hashCode().toLong(),
+                    id = docId.hashCode().toLong(),
                     uri = childUri,
-                    displayName = child.name,
+                    displayName = name,
                     folderPath = folderPath,
                     folderName = folderPath.substringAfterLast('/'),
                     mimeType = "application/pdf",
-                    size = child.size,
-                    dateModified = child.lastModified,
+                    size = size,
+                    dateModified = lastModified,
                     type = MediaType.PDF
                 )
                 onProgress?.invoke(out.size)

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -40,30 +41,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.Player
+import com.grillpoet.mixy.ui.common.formatDuration
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
-/**
- * 视频播放控件面板。
- *
- * 包含：
- *  - 顶部栏：文件名 + 倍速 + 循环 + 旋转
- *  - 中央：播放/暂停
- *  - 底部：进度条 + 上下集
- *
- * 所有状态通过参数传入，所有操作用回调传出。
- * 不持有播放器实例，不访问 ViewModel。
- */
 @Composable
 fun VideoControls(
     fileName: String,
     isPlaying: Boolean,
     position: Long,
     duration: Long,
-    speed: Float,
     repeatMode: Int,
     hasPrev: Boolean,
     hasNext: Boolean,
+    onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSpeedChange: (Float) -> Unit,
@@ -74,22 +65,32 @@ fun VideoControls(
     modifier: Modifier = Modifier
 ) {
     Box(modifier.fillMaxSize()) {
-        // ============ 顶部栏 ============
+        // 顶部栏
         Row(
             Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
                 .background(Color.Black.copy(alpha = 0.4f))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = Color.White
+                )
+            }
+
             Text(
                 text = fileName,
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
             )
 
             var speedMenuOpen by remember { mutableStateOf(false) }
@@ -128,7 +129,7 @@ fun VideoControls(
             }
         }
 
-        // ============ 中央播放/暂停 ============
+        // 中央播放/暂停
         IconButton(
             onClick = onTogglePlayPause,
             modifier = Modifier
@@ -146,7 +147,7 @@ fun VideoControls(
             )
         }
 
-        // ============ 底部进度条 ============
+        // 底部进度条
         Column(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -185,7 +186,9 @@ fun VideoControls(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    fmt(if (isDragging) (dragProgress * duration).toLong() else position),
+                    formatDuration(
+                        if (isDragging) (dragProgress * duration).toLong() else position
+                    ),
                     color = Color.White,
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -197,7 +200,7 @@ fun VideoControls(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    fmt(duration),
+                    formatDuration(duration),
                     color = Color.White.copy(alpha = 0.8f),
                     style = MaterialTheme.typography.labelSmall
                 )
@@ -228,14 +231,4 @@ fun VideoControls(
             }
         }
     }
-}
-
-private fun fmt(ms: Long): String {
-    if (ms <= 0) return "00:00"
-    val s = ms / 1000
-    val h = s / 3600
-    val m = (s % 3600) / 60
-    val sec = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, sec)
-    else "%02d:%02d".format(m, sec)
 }

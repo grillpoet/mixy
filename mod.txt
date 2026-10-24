@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+"""Step 14: 注释修正 + release 签名 TODO + ExternalUriResolver id 命名空间"""
+from pathlib import Path
+
+ROOT = Path(r"D:\pro\jvm\AndroidStudio\mixy")
+BASE = ROOT / "app/src/main/java/com/grillpoet/mixy"
+
+def patch(path: Path, old: str, new: str):
+    text = path.read_text(encoding="utf-8")
+    if old not in text:
+        raise SystemExit(f"❌ 未找到目标：{path}\n---\n{old[:100]}\n---")
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+    print(f"✅ {path}")
+
+def main():
+    # 1) release 签名 TODO
+    patch(
+        ROOT / "app/build.gradle.kts",
+        '            signingConfig = signingConfigs.getByName("debug")',
+        '            // TODO(release): 上架前替换为正式签名配置。\n'
+        '            signingConfig = signingConfigs.getByName("debug")',
+    )
+
+    # 2) ExternalUriResolver id 加高位标记，避免与 MediaStore id 空间混淆
+    patch(
+        BASE / "data/ExternalUriResolver.kt",
+        "                id = uri.toString().hashCode().toLong(),",
+        "                // 高位置 1 标记「外部来源」，与 MediaStore 的正数 id 区分。\n"
+        "                // 队列内 id 仍唯一（同一队列来自同一次外部调用，只有一项）。\n"
+        "                id = (uri.toString().hashCode().toLong() and 0x7FFFFFFFL) or (1L shl 62),",
+    )
+
+    # 3) VideoEngine 注释：明确不 release 是取舍
+    patch(
+        BASE / "player/VideoEngine.kt",
+        " * [DefaultLoadControl] 是 Media3 的 unstable API，整个类标记 @OptIn 抑制\n"
+        " * UnsafeOptInUsageError。",
+        " * [DefaultLoadControl] 是 Media3 的 unstable API，整个类标记 @OptIn 抑制\n"
+        " * UnsafeOptInUsageError。\n"
+        " *\n"
+        " * 生命周期：App 级单例，[release] 当前无调用点——这是有意取舍，\n"
+        " * 复用 ExoPlayer 加快二次进入首帧，代价是解码器随进程存活。\n"
+        " * 若未来引入 per-screen ViewModel 作用域，应在页面退出时 release 并重建。",
+    )
+
+    # 4) MediaCache 注释：说明与 StateFlow 的关系
+    patch(
+        BASE / "data/MediaCache.kt",
+        "class MediaCache {",
+        "/**\n"
+        " * 带 TTL 的扫描结果缓存。\n"
+        " *\n"
+        " * 与 [MediaRepository.folders]（StateFlow）是两层缓存：\n"
+        " *  - 本类：跨「重新进入 App」保留，TTL 到期自动失效\n"
+        " *  - StateFlow：进程内 UI 订阅源\n"
+        " * 两者都由 [MediaRepository.invalidate] 显式清理，不要单独调本类。\n"
+        " */\n"
+        "class MediaCache {",
+    )
+
+if __name__ == "__main__":
+    main()

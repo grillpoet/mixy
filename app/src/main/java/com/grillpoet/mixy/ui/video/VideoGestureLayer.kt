@@ -49,7 +49,7 @@ fun VideoGestureLayer(
                     var dragging = false
                     var totalDx = 0f
                     var lastX = down.position.x
-                    var dragStartPosition = 0L
+                    var dragStartPosition: Long
                     var previewPosition = 0L
 
                     while (true) {

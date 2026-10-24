@@ -35,40 +35,30 @@ object MediaSorter {
      * 聚合规则：
      *  - 修改时间：取 items 中最大的 dateModified
      *  - 大小 / 时长：items 求和
+     *
+     * 四种 [SortMode] 平铺在 when 里，每个分支独立完整。
+     * 不用前置 if 提前返回，避免后续 when 出现 unreachable 分支。
      */
     fun sortFolders(
         folders: List<MediaFolder>,
         spec: SortSpec
-    ): List<MediaFolder> {
-        // 名称排序不需要聚合，走简单的比较器路径
-        if (spec.mode == SortMode.NAME) {
+    ): List<MediaFolder> = when (spec.mode) {
+        SortMode.NAME -> {
             val cmp: Comparator<MediaFolder> =
                 compareBy(String.CASE_INSENSITIVE_ORDER) { f -> f.folderName }
-            return folders.sortedWith(
+            folders.sortedWith(
                 if (spec.order == SortOrder.ASC) cmp else cmp.reversed()
             )
         }
-
-        // 其他模式：先算 key，再排序
-        val keyed: List<Pair<MediaFolder, Long>> = when (spec.mode) {
-            SortMode.MODIFIED -> folders.map { f ->
-                f to (f.items.maxOfOrNull { it.dateModified } ?: 0L)
-            }
-            SortMode.SIZE -> folders.map { f ->
-                f to f.items.sumOf { it.size }
-            }
-            SortMode.DURATION -> folders.map { f ->
-                f to f.items.sumOf { it.duration }
-            }
-            SortMode.NAME -> folders.map { f -> f to 0L }  // 不会走到
+        SortMode.MODIFIED -> sortByAggregatedKey(folders, spec.order) {
+            it.items.maxOfOrNull { i -> i.dateModified } ?: 0L
         }
-
-        val sorted = if (spec.order == SortOrder.ASC) {
-            keyed.sortedBy { it.second }
-        } else {
-            keyed.sortedByDescending { it.second }
+        SortMode.SIZE -> sortByAggregatedKey(folders, spec.order) {
+            it.items.sumOf { i -> i.size }
         }
-        return sorted.map { it.first }
+        SortMode.DURATION -> sortByAggregatedKey(folders, spec.order) {
+            it.items.sumOf { i -> i.duration }
+        }
     }
 
     /**
@@ -88,5 +78,24 @@ object MediaSorter {
             SortMode.DURATION -> compareBy { i -> i.duration }
         }
         return items.sortedWith(if (spec.order == SortOrder.ASC) cmp else cmp.reversed())
+    }
+
+    /**
+     * 对每一项先算聚合 key，再按 key 排序（Schwartzian transform）。
+     *
+     * 聚合计算只发生 n 次，而不是 comparator 里的 n log n 次。
+     */
+    private fun <T> sortByAggregatedKey(
+        items: List<T>,
+        order: SortOrder,
+        key: (T) -> Long
+    ): List<T> {
+        val keyed = items.map { it to key(it) }
+        val sorted = if (order == SortOrder.ASC) {
+            keyed.sortedBy { it.second }
+        } else {
+            keyed.sortedByDescending { it.second }
+        }
+        return sorted.map { it.first }
     }
 }

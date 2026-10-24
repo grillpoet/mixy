@@ -1,16 +1,15 @@
 package com.grillpoet.mixy.ui.video
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
-import android.os.Build
 import android.util.Rational
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,13 +22,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,38 +36,44 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.VideoOrientation
-import com.grillpoet.mixy.ui.music.MusicPlayerViewModel
+import com.grillpoet.mixy.ui.common.formatDuration
 import kotlinx.coroutines.delay
+import kotlin.math.roundToInt
+import kotlin.time.Duration.Companion.milliseconds
 
-private const val CONTROLS_HIDE_DELAY = 3500L
+private val CONTROLS_HIDE_DELAY = 3500L.milliseconds
 
-/**
- * 视频播放页。
- *
- * 职责：只做编排。持有播放状态、组装三个子模块、管理控件显隐和屏幕方向。
- *
- * 子模块：
- *  - [VideoSurface]：视频画面
- *  - [VideoGestureLayer]：手势
- *  - [VideoControls]：控件面板
- *
- * 状态归属：
- *  - 播放状态 (isPlaying / position / duration)：由 [VideoPlayerViewModel] 持有
- *  - videoAspect：本页持有，由 Surface 回调更新
- *  - controlsVisible：本页持有，由手势和计时器驱动
- *  - 方向管理：本页持有，跟随视频尺寸或手动切换
- */
+/** 构建 PiP 参数。aspect 非法时回退 16:9，比例限制在系统可接受范围。 */
+private fun buildPipParams(aspect: Float): PictureInPictureParams {
+    val safe = if (aspect > 0f && aspect.isFinite()) {
+        aspect.coerceIn(0.4f, 2.5f)
+    } else {
+        16f / 9f
+    }
+    val ratio = if (safe >= 1f) {
+        Rational((safe * 10).roundToInt().coerceAtLeast(10), 10)
+    } else {
+        Rational(10, ((1f / safe) * 10).roundToInt().coerceAtLeast(10))
+    }
+    return PictureInPictureParams.Builder().setAspectRatio(ratio).build()
+}
+
+@SuppressLint("SourceLockedOrientationActivity")
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     cursor: PlaylistCursor,
-    container: AppContainer
+    container: AppContainer,
+    onBack: () -> Unit
 ) {
     if (cursor.items.isEmpty()) return
 
@@ -78,12 +81,11 @@ fun VideoPlayerScreen(
     val activity = context as? Activity
 
     val videoVm: VideoPlayerViewModel = viewModel(factory = container.viewModelFactory)
-    val musicVm: MusicPlayerViewModel = viewModel(factory = container.viewModelFactory)
 
-    // 进入视频页，先停掉音乐
-    LaunchedEffect(Unit) { musicVm.clear() }
+    LaunchedEffect(Unit) { container.stopMusicForVideo() }
 
-    // ============ 状态 ============
+    val settings by container.settingsStore.flow.collectAsState()
+
     var currentIndex by remember { mutableIntStateOf(cursor.currentIndex) }
     val currentItem = cursor.items.getOrNull(currentIndex) ?: return
 
@@ -98,60 +100,84 @@ fun VideoPlayerScreen(
     var autoOrientationApplied by remember(currentIndex) { mutableStateOf(false) }
 
     var controlsVisible by remember { mutableStateOf(true) }
-    var lastInteraction by remember { mutableStateOf(System.currentTimeMillis()) }
+    var lastInteraction by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
-    // 拖动手势的预览位置。非 null 时显示浮层。
     var dragSeekPreview by remember { mutableStateOf<Long?>(null) }
+    var wasPlayingBeforeBackground by remember { mutableStateOf(false) }
 
-    // ============ 初始方向 ============
     LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
-        when (container.settingsStore.flow.value.videoDefaultOrientation) {
+        when (settings.videoDefaultOrientation) {
             VideoOrientation.LANDSCAPE -> {
-                act.requestedOrientation =
-                    ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
                 orientationManuallySet = true
             }
             VideoOrientation.PORTRAIT -> {
-                act.requestedOrientation =
-                    ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
                 orientationManuallySet = true
             }
             VideoOrientation.AUTO -> Unit
         }
     }
 
-    // ============ 自动画中画 ============
     val lifecycleOwner = LocalLifecycleOwner.current
     val latestAspect = rememberUpdatedState(videoAspect)
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
-            if (container.settingsStore.flow.value.videoBackground != "PIP") {
-                return@LifecycleEventObserver
-            }
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-                return@LifecycleEventObserver
-            }
-            val act = activity ?: return@LifecycleEventObserver
-            if (act.isInPictureInPictureMode) return@LifecycleEventObserver
+            when (event) {
+                // ON_PAUSE 早于 ON_STOP。先在这里尝试进入 PiP：
+                // 成功则保留播放，失败才暂停。
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (activity?.isInPictureInPictureMode == true) {
+                        return@LifecycleEventObserver
+                    }
+                    val controller = container.videoEngine.player
+                    wasPlayingBeforeBackground = controller.isPlaying
 
-            val aspect = latestAspect.value
-            val ratio = if (aspect >= 1f) {
-                Rational((aspect * 100).toInt().coerceAtLeast(100), 100)
-            } else {
-                Rational(100, ((1f / aspect) * 100).toInt().coerceAtLeast(100))
+                    val pipEnabled =
+                        container.settingsStore.flow.value.videoBackground == "PIP"
+                    if (pipEnabled && wasPlayingBeforeBackground && activity != null) {
+                        val entered = runCatching {
+                            activity.enterPictureInPictureMode(
+                                buildPipParams(latestAspect.value)
+                            )
+                        }.getOrDefault(false)
+                        if (entered) return@LifecycleEventObserver
+                    }
+                    if (controller.isPlaying) controller.pause()
+                }
+
+                // 兜底：ON_PAUSE 进 PiP 失败时再试一次。
+                Lifecycle.Event.ON_STOP -> {
+                    if (container.settingsStore.flow.value.videoBackground != "PIP") {
+                        return@LifecycleEventObserver
+                    }
+                    val act = activity ?: return@LifecycleEventObserver
+                    if (act.isInPictureInPictureMode) return@LifecycleEventObserver
+                    runCatching {
+                        act.enterPictureInPictureMode(
+                            buildPipParams(latestAspect.value)
+                        )
+                    }
+                }
+
+                Lifecycle.Event.ON_RESUME -> {
+                    if (activity?.isInPictureInPictureMode == true) {
+                        return@LifecycleEventObserver
+                    }
+                    if (wasPlayingBeforeBackground) {
+                        container.videoEngine.player.play()
+                    }
+                    wasPlayingBeforeBackground = false
+                }
+
+                else -> Unit
             }
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(ratio)
-                .build()
-            runCatching { act.enterPictureInPictureMode(params) }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // ============ 播放控制 ============
     LaunchedEffect(currentIndex) {
         videoVm.play(currentItem.uri)
         videoVm.setSpeed(speed)
@@ -160,17 +186,15 @@ fun VideoPlayerScreen(
         controlsVisible = true
     }
 
-    // 控件自动隐藏
     val interacting = dragSeekPreview != null
     LaunchedEffect(controlsVisible, lastInteraction, isPlaying, interacting) {
         if (!controlsVisible || !isPlaying || interacting) return@LaunchedEffect
         delay(CONTROLS_HIDE_DELAY)
-        if (System.currentTimeMillis() - lastInteraction >= CONTROLS_HIDE_DELAY) {
+        if (System.currentTimeMillis() - lastInteraction >= CONTROLS_HIDE_DELAY.inWholeMilliseconds) {
             controlsVisible = false
         }
     }
 
-    // ============ 全屏沉浸 ============
     DisposableEffect(Unit) {
         val window = activity?.window
         if (window != null) {
@@ -189,11 +213,10 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ============ 自动方向 ============
     val currentAutoApplied = rememberUpdatedState(autoOrientationApplied)
     LaunchedEffect(videoAspect, orientationManuallySet) {
         if (orientationManuallySet || currentAutoApplied.value) return@LaunchedEffect
-        if (videoAspect <= 0f) return@LaunchedEffect   // 真实尺寸未到，先不判
+        if (videoAspect <= 0f) return@LaunchedEffect
         val act = activity ?: return@LaunchedEffect
         if (videoAspect > 1.05f) {
             act.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -204,13 +227,11 @@ fun VideoPlayerScreen(
         }
     }
 
-    // ============ 布局 ============
-    BoxWithConstraints(
+    Box(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // 视频画面
         VideoSurface(
             player = videoVm.player,
             videoAspect = videoAspect,
@@ -221,12 +242,10 @@ fun VideoPlayerScreen(
             }
         )
 
-        // 手势层
         VideoGestureLayer(
             positionProvider = { position },
             durationProvider = { duration },
-            seekSecondsPerScreen =
-                container.settingsStore.flow.value.videoSeekSeconds,
+            seekSecondsPerScreen = settings.videoSeekSeconds,
             onTap = {
                 controlsVisible = !controlsVisible
                 lastInteraction = System.currentTimeMillis()
@@ -242,12 +261,10 @@ fun VideoPlayerScreen(
             }
         )
 
-        // 拖动预览浮层
         dragSeekPreview?.let { preview ->
             DragSeekOverlay(preview = preview, duration = duration)
         }
 
-        // 控件层
         AnimatedVisibility(
             visible = controlsVisible,
             enter = fadeIn(),
@@ -259,10 +276,10 @@ fun VideoPlayerScreen(
                 isPlaying = isPlaying,
                 position = position,
                 duration = duration,
-                speed = speed,
                 repeatMode = repeatMode,
                 hasPrev = currentIndex > 0,
                 hasNext = currentIndex < cursor.items.size - 1,
+                onBack = onBack,
                 onTogglePlayPause = {
                     videoVm.togglePlayPause()
                     lastInteraction = System.currentTimeMillis()
@@ -311,21 +328,9 @@ fun VideoPlayerScreen(
     }
 }
 
-
-/**
- * 拖动 seek 时的预览浮层。
- *
- * 显示当前预览位置 / 总时长。松手后由调用方清除。
- */
 @Composable
-private fun DragSeekOverlay(
-    preview: Long,
-    duration: Long
-) {
-    Box(
-        Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
+private fun DragSeekOverlay(preview: Long, duration: Long) {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(12.dp))
@@ -333,21 +338,10 @@ private fun DragSeekOverlay(
                 .padding(horizontal = 18.dp, vertical = 12.dp)
         ) {
             Text(
-                text = "${fmtMs(preview)} / ${fmtMs(duration)}",
+                text = "${formatDuration(preview)} / ${formatDuration(duration)}",
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium
             )
         }
     }
-}
-
-/** 毫秒 -> mm:ss 或 h:mm:ss。 */
-private fun fmtMs(ms: Long): String {
-    if (ms <= 0) return "00:00"
-    val s = ms / 1000
-    val h = s / 3600
-    val m = (s % 3600) / 60
-    val sec = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, sec)
-    else "%02d:%02d".format(m, sec)
 }

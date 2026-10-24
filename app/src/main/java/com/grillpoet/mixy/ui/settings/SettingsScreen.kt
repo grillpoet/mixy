@@ -7,6 +7,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,59 +31,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
-import com.grillpoet.mixy.data.model.MediaType
+import com.grillpoet.mixy.data.model.PdfLayout
+import com.grillpoet.mixy.data.model.PlayMode
+import com.grillpoet.mixy.data.model.VideoOrientation
 import com.grillpoet.mixy.nav.Screen
 import com.grillpoet.mixy.ui.widget.EditableChips
+import com.grillpoet.mixy.ui.widget.MixyTopBar
 
 @Composable
 fun SettingsScreen(
     container: AppContainer,
-    onNavigate: (Screen) -> Unit
+    onNavigate: (Screen) -> Unit,
+    onBack: () -> Unit
 ) {
     val settings by container.settingsStore.flow.collectAsState()
     val context = LocalContext.current
-
-    // ==================== 操作 lambda ====================
-
-    val moveUp: (MediaType) -> Unit = { type ->
-        container.settingsStore.update { s ->
-            val idx = s.chipOrder.indexOf(type)
-            if (idx <= 0) s else {
-                val list = s.chipOrder.toMutableList()
-                val tmp = list[idx]
-                list[idx] = list[idx - 1]
-                list[idx - 1] = tmp
-                s.copy(chipOrder = list)
-            }
-        }
-    }
-
-    val moveDown: (MediaType) -> Unit = { type ->
-        container.settingsStore.update { s ->
-            val idx = s.chipOrder.indexOf(type)
-            if (idx < 0 || idx >= s.chipOrder.lastIndex) s else {
-                val list = s.chipOrder.toMutableList()
-                val tmp = list[idx]
-                list[idx] = list[idx + 1]
-                list[idx + 1] = tmp
-                s.copy(chipOrder = list)
-            }
-        }
-    }
-
-    val setVisible: (MediaType, Boolean) -> Unit = { type, visible ->
-        container.settingsStore.update { s ->
-            val cur = s.visibleChips
-            if (!visible && cur.size <= 1 && type in cur) {
-                s
-            } else {
-                val hidden =
-                    if (visible) s.chipHidden - type
-                    else s.chipHidden + type
-                s.copy(chipHidden = hidden)
-            }
-        }
-    }
 
     val pdfTreeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -96,39 +61,46 @@ fun SettingsScreen(
         }
     }
 
-    // ==================== UI ====================
-
     Column(
         Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "设置",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
+        MixyTopBar(title = "设置", onBack = onBack)
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // ==================== 媒体类型 ====================
             item {
+                SectionHeader("外观")
+                ChoiceGroup(
+                    title = "主题",
+                    options = listOf(
+                        "system" to "跟随系统",
+                        "light" to "亮色",
+                        "dark" to "暗色"
+                    ),
+                    current = settings.theme,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(theme = v) }
+                    }
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(16.dp))
                 SectionHeader("媒体类型")
-                SectionHint("长按拖动排序，点 × 隐藏，点下方 chip 恢复")
+                Text(
+                    text = "长按拖动排序，点 × 隐藏，点下方 chip 恢复",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
+                )
                 EditableChips(
                     visible = settings.visibleChips,
                     hidden = settings.chipHidden,
-                    // 设置页只配置顺序，不涉及"当前选中"，不高亮任何 chip
                     onReorder = { newVisibleOrder ->
                         container.settingsStore.update {
                             val hiddenItems = it.chipOrder.filter { m -> m in it.chipHidden }
@@ -149,23 +121,74 @@ fun SettingsScreen(
                     },
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                 )
-                Spacer(Modifier.height(8.dp))
             }
 
-            // ==================== 文件夹 ====================
+            item {
+                Spacer(Modifier.height(16.dp))
+                SectionHeader("播放")
+                ChoiceGroup(
+                    title = "音乐默认播放模式",
+                    options = listOf(
+                        PlayMode.SEQUENCE to "顺序",
+                        PlayMode.REPEAT_ONE to "单曲",
+                        PlayMode.SHUFFLE to "随机"
+                    ),
+                    current = settings.musicDefaultPlayMode,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(musicDefaultPlayMode = v) }
+                    }
+                )
+                Spacer(Modifier.height(8.dp))
+                ChoiceGroup(
+                    title = "视频默认方向",
+                    options = listOf(
+                        VideoOrientation.AUTO to "自动",
+                        VideoOrientation.LANDSCAPE to "横屏",
+                        VideoOrientation.PORTRAIT to "竖屏"
+                    ),
+                    current = settings.videoDefaultOrientation,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(videoDefaultOrientation = v) }
+                    }
+                )
+                Spacer(Modifier.height(8.dp))
+                ChoiceGroup(
+                    title = "视频左右滑动快进",
+                    options = listOf(
+                        30 to "30 秒",
+                        60 to "60 秒",
+                        90 to "90 秒",
+                        120 to "120 秒"
+                    ),
+                    current = settings.videoSeekSeconds,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(videoSeekSeconds = v) }
+                    }
+                )
+                Spacer(Modifier.height(8.dp))
+                ChoiceGroup(
+                    title = "视频后台播放",
+                    options = listOf(
+                        "PIP" to "画中画",
+                        "PAUSE" to "暂停"
+                    ),
+                    current = settings.videoBackground,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(videoBackground = v) }
+                    }
+                )
+            }
+
             item {
                 Spacer(Modifier.height(16.dp))
                 SectionHeader("文件夹")
-            }
-
-            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { onNavigate(Screen.ExcludedPaths) }
-                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                        .padding(horizontal = 14.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -181,20 +204,16 @@ fun SettingsScreen(
                 }
             }
 
-            // ==================== PDF ====================
             item {
                 Spacer(Modifier.height(16.dp))
                 SectionHeader("PDF")
-            }
-
-            item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
+                        .clip(RoundedCornerShape(12.dp))
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .clickable { pdfTreeLauncher.launch(null) }
-                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                        .padding(horizontal = 14.dp, vertical = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -208,14 +227,24 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+                Spacer(Modifier.height(8.dp))
+                ChoiceGroup(
+                    title = "PDF 默认布局",
+                    options = listOf(
+                        PdfLayout.VERTICAL to "纵向",
+                        PdfLayout.HORIZONTAL to "横向"
+                    ),
+                    current = settings.pdfDefaultLayout,
+                    onSelect = { v ->
+                        container.settingsStore.update { it.copy(pdfDefaultLayout = v) }
+                    }
+                )
             }
 
             item { Spacer(Modifier.height(24.dp)) }
         }
     }
 }
-
-// ==================== 小组件 ====================
 
 @Composable
 private fun SectionHeader(text: String) {
@@ -228,12 +257,31 @@ private fun SectionHeader(text: String) {
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SectionHint(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
-    )
+private fun <T> ChoiceGroup(
+    title: String,
+    options: List<Pair<T, String>>,
+    current: T,
+    onSelect: (T) -> Unit
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            options.forEach { (value, label) ->
+                FilterChip(
+                    selected = current == value,
+                    onClick = { onSelect(value) },
+                    label = { Text(label) }
+                )
+            }
+        }
+    }
 }

@@ -1,15 +1,16 @@
 package com.grillpoet.mixy.ui.settings
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -24,7 +25,7 @@ import com.grillpoet.mixy.data.model.SortMode
 import com.grillpoet.mixy.data.model.SortOrder
 import com.grillpoet.mixy.data.model.ViewMode
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ViewSettingsSheet(
     view: ViewMode,
@@ -54,7 +55,7 @@ fun ViewSettingsSheet(
             )
 
             SectionLabel("视图")
-            Row {
+            FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                 FilterChip(
                     selected = view == ViewMode.LIST,
                     onClick = { onView(ViewMode.LIST) },
@@ -63,7 +64,6 @@ fun ViewSettingsSheet(
                         Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = null)
                     }
                 )
-                Spacer(Modifier.width(8.dp))
                 FilterChip(
                     selected = view == ViewMode.GRID,
                     onClick = { onView(ViewMode.GRID) },
@@ -77,13 +77,12 @@ fun ViewSettingsSheet(
             if (view == ViewMode.GRID) {
                 Spacer(Modifier.height(12.dp))
                 SectionLabel("网格列数")
-                Row {
+                FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)) {
                     (2..5).forEach { n ->
                         FilterChip(
                             selected = gridColumns == n,
                             onClick = { onGridColumns(n) },
-                            label = { Text("$n") },
-                            modifier = Modifier.padding(end = 8.dp)
+                            label = { Text("$n") }
                         )
                     }
                 }
@@ -91,7 +90,7 @@ fun ViewSettingsSheet(
 
             Spacer(Modifier.height(12.dp))
             SectionLabel("排序")
-            Row {
+            FlowRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
                 SortModeChip("名称", sortMode == SortMode.NAME) { onSortMode(SortMode.NAME) }
                 SortModeChip("时间", sortMode == SortMode.MODIFIED) { onSortMode(SortMode.MODIFIED) }
                 SortModeChip("大小", sortMode == SortMode.SIZE) { onSortMode(SortMode.SIZE) }
@@ -132,7 +131,6 @@ private fun SortModeChip(label: String, selected: Boolean, onClick: () -> Unit) 
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label) },
-        modifier = Modifier.padding(end = 6.dp)
+        label = { Text(label) }
     )
 }

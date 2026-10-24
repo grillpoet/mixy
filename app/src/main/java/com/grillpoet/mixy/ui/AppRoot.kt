@@ -27,11 +27,21 @@ import com.grillpoet.mixy.ui.folder.FolderContentScreen
 import com.grillpoet.mixy.ui.folder.FolderListScreen
 import com.grillpoet.mixy.ui.image.ImageViewerScreen
 import com.grillpoet.mixy.ui.music.MusicPlayerScreen
+import com.grillpoet.mixy.ui.music.components.MiniBar
 import com.grillpoet.mixy.ui.pdf.PdfViewerScreen
 import com.grillpoet.mixy.ui.settings.ExcludedPathsScreen
 import com.grillpoet.mixy.ui.settings.SettingsScreen
 import com.grillpoet.mixy.ui.video.VideoPlayerScreen
-import com.grillpoet.mixy.ui.widget.MiniBar
+
+/** MiniBar 高度估算（封面 40dp + 上下 padding 6+6 + 阴影余量）。 */
+private val MINI_BAR_SPACE = 72.dp
+
+/** 只有列表类页面才在底部为 MiniBar 预留空间、才显示 MiniBar。 */
+private fun Screen.hostsMiniBar(): Boolean = when (this) {
+    Screen.FolderList, Screen.Settings, Screen.ExcludedPaths -> true
+    is Screen.FolderContent -> true
+    else -> false
+}
 
 @Composable
 fun AppRoot(container: AppContainer) {
@@ -39,12 +49,14 @@ fun AppRoot(container: AppContainer) {
     val context = LocalContext.current
     val saveableStateHolder = rememberSaveableStateHolder()
 
-    // 外部 App 传入的 URI（ACTION_VIEW / ACTION_SEND）
-    val externalUri by container.playbackSession.externalUri.collectAsState()
-    LaunchedEffect(externalUri) {
-        val uri = externalUri ?: return@LaunchedEffect
-        val cursor = ExternalUriResolver.toCursor(context, uri)
-        if (cursor != null) {
+    // 用 collectAsState 订阅，不用 StateFlow.value：
+    // 后者在 composition 内读会被 lint 拦，且值变化不触发重组。
+    val musicState by container.musicPlayerController.state.collectAsState()
+
+    LaunchedEffect(container) {
+        // Channel 保证每个 URI 只处理一次，重组不会重复触发。
+        container.playbackSession.externalUri.collect { uri ->
+            val cursor = ExternalUriResolver.toCursor(context, uri) ?: return@collect
             val target = when (cursor.sourceType) {
                 MediaType.IMAGE -> Screen.ImageViewer(cursor)
                 MediaType.VIDEO -> Screen.VideoPlayer(cursor)
@@ -53,16 +65,16 @@ fun AppRoot(container: AppContainer) {
             }
             nav.push(target)
         }
-        // 消费掉，避免重组时重复跳转
-        container.playbackSession.consumeExternalUri()
     }
 
-    // 全局接管返回键
     BackHandler(enabled = true) {
         if (!nav.pop()) {
             (context as? Activity)?.finish()
         }
     }
+
+    val current = nav.current
+    val reserveBottom = current.hostsMiniBar() && musicState != null
 
     Box(Modifier.fillMaxSize()) {
         Box(
@@ -70,24 +82,26 @@ fun AppRoot(container: AppContainer) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                // 列表类页面底部预留 MiniBar 高度，避免最后一项被遮挡。
+                .padding(bottom = if (reserveBottom) MINI_BAR_SPACE else 0.dp)
         ) {
-            when (val screen = nav.current) {
+            // current 是 val，分支内直接 smart cast，不再引入 screen 变量。
+            when (current) {
                 is Screen.FolderList ->
                     saveableStateHolder.SaveableStateProvider("folder_list") {
-                        FolderListScreen(
-                            container = container,
-                            onNavigate = nav::push
-                        )
+                        FolderListScreen(container = container, onNavigate = nav::push)
                     }
 
                 is Screen.FolderContent ->
                     saveableStateHolder.SaveableStateProvider(
-                        "folder_content_${screen.folderPath}"
+                        "folder_content_${current.mediaType.name}_${current.folderPath}"
                     ) {
                         FolderContentScreen(
-                            folderPath = screen.folderPath,
+                            mediaType = current.mediaType,
+                            folderPath = current.folderPath,
                             container = container,
-                            onNavigate = nav::push
+                            onNavigate = nav::push,
+                            onBack = { nav.pop() }
                         )
                     }
 
@@ -95,53 +109,57 @@ fun AppRoot(container: AppContainer) {
                     saveableStateHolder.SaveableStateProvider("settings") {
                         SettingsScreen(
                             container = container,
-                            onNavigate = nav::push
+                            onNavigate = nav::push,
+                            onBack = { nav.pop() }
                         )
                     }
 
                 is Screen.ExcludedPaths ->
                     saveableStateHolder.SaveableStateProvider("excluded_paths") {
-                        ExcludedPathsScreen(container = container)
+                        ExcludedPathsScreen(container = container, onBack = { nav.pop() })
                     }
 
                 is Screen.MusicPlayer ->
                     saveableStateHolder.SaveableStateProvider("music_player") {
                         MusicPlayerScreen(
-                            cursor = screen.cursor,
-                            container = container
+                            cursor = current.cursor,
+                            container = container,
+                            onBack = { nav.pop() }
                         )
                     }
 
-                is Screen.ImageViewer -> key(screen) {
-                    ImageViewerScreen(cursor = screen.cursor)
+                is Screen.ImageViewer -> key(current) {
+                    ImageViewerScreen(cursor = current.cursor, onBack = { nav.pop() })
                 }
 
                 is Screen.VideoPlayer ->
                     saveableStateHolder.SaveableStateProvider("video_player") {
                         VideoPlayerScreen(
-                            cursor = screen.cursor,
-                            container = container
+                            cursor = current.cursor,
+                            container = container,
+                            onBack = { nav.pop() }
                         )
                     }
 
                 is Screen.PdfViewer ->
                     saveableStateHolder.SaveableStateProvider("pdf_viewer") {
                         PdfViewerScreen(
-                            cursor = screen.cursor,
-                            container = container
+                            cursor = current.cursor,
+                            container = container,
+                            onBack = { nav.pop() }
                         )
                     }
             }
         }
 
-        // 迷你栏：不在音乐播放页时显示
-        val showMiniBar = nav.current !is Screen.MusicPlayer
-        if (showMiniBar) {
+        // 只在列表类页面显示 MiniBar。全屏媒体页一律不显示。
+        if (current.hostsMiniBar()) {
             MiniBar(
                 container = container,
                 onOpenPlayer = {
-                    // 用 PlaybackSession 记录的上一个 cursor，信息完整
-                    val cursor = container.playbackSession.lastMusicCursor.value
+                    // 事件回调，不是 composition 期间，读 .value 合法且能拿到最新值。
+                    val cursor = container.musicPlayerController.state.value?.cursor
+                        ?: container.playbackSession.lastMusicCursor.value
                         ?: return@MiniBar
                     if (nav.current !is Screen.MusicPlayer) {
                         nav.push(Screen.MusicPlayer(cursor))

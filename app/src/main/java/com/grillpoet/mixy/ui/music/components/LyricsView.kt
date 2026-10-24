@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import com.grillpoet.mixy.data.LyricLine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * 歌词视图。
@@ -44,6 +45,7 @@ import kotlinx.coroutines.launch
  *  - 播放中自动滚动到当前行
  *  - 手动拖动时暂停自动滚动，松手后 3 秒内不恢复（避免与用户操作打架）
  *  - 松手时把中心行作为 seek 目标
+ *  - 切歌时重置拖动抑制窗口，让新歌的歌词立刻能自动滚动
  *
  * @param lyrics 歌词行列表。空列表时显示"暂无歌词"。
  * @param position 当前播放位置 (ms)。高频更新，来自播放器。
@@ -79,6 +81,13 @@ fun LyricsView(
     var isDragging by remember { mutableStateOf(false) }
     var lastUserSeekAt by remember { mutableLongStateOf(0L) }
 
+    // 切歌时重置拖动抑制窗口。不重置的话，切换前 3 秒内拖动过歌词，
+    // 新歌的歌词会在这 3 秒内不自动滚动，看起来像卡住了。
+    LaunchedEffect(lyrics) {
+        lastUserSeekAt = 0L
+        isDragging = false
+    }
+
     // 监听拖动交互，松手后计算中心行并 seek
     LaunchedEffect(listState) {
         var userInitiated = false
@@ -95,7 +104,7 @@ fun LyricsView(
         snapshotFlow { listState.isScrollInProgress }
             .collect { scrolling ->
                 if (!scrolling && isDragging && userInitiated) {
-                    delay(200)
+                    delay(200.milliseconds)
                     val info = listState.layoutInfo
                     val centerY = info.viewportSize.height / 2
                     val centerItem = info.visibleItemsInfo.minByOrNull {
@@ -111,6 +120,8 @@ fun LyricsView(
             }
     }
 
+    // maxHeight 被使用（halfHeight 和 viewportPx），lint 误报 scope 未使用，抑制。
+    @Suppress("UnusedBoxWithConstraintsScope")
     BoxWithConstraints(modifier = modifier) {
         val halfHeight = maxHeight / 2
         val viewportPx = with(density) { maxHeight.toPx() }

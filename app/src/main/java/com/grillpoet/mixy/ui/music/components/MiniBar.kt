@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.ui.widget
+package com.grillpoet.mixy.ui.music.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,15 +32,18 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil3.compose.SubcomposeAsyncImage
+import coil3.compose.AsyncImage
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.cover.AudioCover
 
 /**
  * 底部迷你播放条。
  *
- * 状态来自全局 [com.grillpoet.mixy.player.MusicPlayerController]，
- * 音乐队列为空时本组件自我隐藏（返回前先判 null）。
+ * 只订阅 [MusicPlayerController.state]（低频），不订阅 position / duration。
+ * 因此播放中进度条每 200ms 更新时，MiniBar 不会重组。
+ *
+ * 封面用 AsyncImage + 底层占位（不用 SubcomposeAsyncImage），
+ * 避免每次重组都开子组合。
  */
 @Composable
 fun MiniBar(
@@ -46,11 +51,12 @@ fun MiniBar(
     onOpenPlayer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val stateFlow = container.musicPlayerController.state
-    val state by stateFlow.collectAsState()
+    val state by container.musicPlayerController.state.collectAsState()
     val s = state ?: return
 
-    val uri = s.current?.uri
+    val model: Any? = remember(s.current?.uri) {
+        s.current?.uri?.let { AudioCover(it) }
+    }
 
     Row(
         modifier = modifier
@@ -68,13 +74,13 @@ fun MiniBar(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
             contentAlignment = Alignment.Center
         ) {
-            SubcomposeAsyncImage(
-                model = uri?.let { AudioCover(it) },
+            // 底层占位，图片加载成功后覆盖
+            Text("♪", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            AsyncImage(
+                model = model,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth(),
-                loading = { MiniPlaceholder() },
-                error = { MiniPlaceholder() }
+                modifier = Modifier.fillMaxSize()
             )
         }
 
@@ -118,9 +124,4 @@ fun MiniBar(
             )
         }
     }
-}
-
-@Composable
-private fun MiniPlaceholder() {
-    Text("♪", color = MaterialTheme.colorScheme.onSurfaceVariant)
 }

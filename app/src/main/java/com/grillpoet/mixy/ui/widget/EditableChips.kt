@@ -45,13 +45,6 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
  *
  * 与主界面的 [MediaTypeChips] 是两个完全独立的组件：
  * 主界面只切换类型，设置页只编辑顺序和可见性。
- *
- * ## 拖动实现
- *
- * 基于 [sh.calvin.reorderable]，把拖动的位置计算、动画、边缘滚动
- * 全部交给库处理，自己只关心"顺序变了"这一个事件。
- * 拖动中 onMove 会连续触发，每次直接提交新顺序；
- * 设置页不是高频界面，可以接受。
  */
 @Composable
 fun EditableChips(
@@ -83,8 +76,6 @@ private fun VisibleRow(
 ) {
     val lazyListState = rememberLazyListState()
 
-    // onMove 里直接更新顺序并提交给上层。
-    // 库要求列表在回调返回前更新，所以这里同步调用 onReorder。
     val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
         val newList = visible.toMutableList().apply {
             add(to.index, removeAt(from.index))
@@ -122,11 +113,15 @@ private fun VisibleRow(
  *
  * 拖动手柄单独标记，只有按住手柄才能拖动，
  * 点 × 或点 chip 其他区域不会触发拖动。
+ *
+ * @param modifier 整体容器修饰符。Compose lint 要求第一个 Modifier 参数叫 modifier。
+ * @param dragHandleModifier 拖动手柄的修饰符。由调用方传入 draggableHandle()。
  */
 @Composable
 private fun ChipItem(
     type: MediaType,
     isDragging: Boolean,
+    modifier: Modifier = Modifier,
     dragHandleModifier: Modifier,
     onHideClick: () -> Unit
 ) {
@@ -137,7 +132,7 @@ private fun ChipItem(
     }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .height(36.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(bg)

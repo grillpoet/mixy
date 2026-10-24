@@ -3,11 +3,19 @@ package com.grillpoet.mixy.ui.folder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,7 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.MediaSorter
 import com.grillpoet.mixy.data.model.MediaType
@@ -23,37 +32,67 @@ import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.SortSpec
 import com.grillpoet.mixy.data.model.ViewMode
 import com.grillpoet.mixy.nav.Screen
-import com.grillpoet.mixy.ui.folder.components.FolderContentHeader
 import com.grillpoet.mixy.ui.folder.components.FolderGridList
 import com.grillpoet.mixy.ui.folder.components.FolderRowList
 import com.grillpoet.mixy.ui.settings.ViewSettingsSheet
-import com.grillpoet.mixy.vm.FolderViewModel
+import com.grillpoet.mixy.ui.widget.MixyTopBar
 
-/**
- * 文件夹内容页：显示一个文件夹内的所有媒体项。
- *
- * 编排层：负责状态收集、排序、导航分发。
- * 具体的列表渲染委托给 [FolderGridList] / [FolderRowList]，
- * 顶部栏委托给 [FolderContentHeader]。
- *
- * @param folder 当前文件夹。包含文件夹名、路径、媒体项列表。
- * @param container 应用依赖容器。用于读取设置和创建 ViewModel。
- * @param onNavigate 导航回调。点击媒体项时触发。
- */
 @Composable
 fun FolderContentScreen(
+    mediaType: MediaType,
     folderPath: String,
     container: AppContainer,
-    onNavigate: (Screen) -> Unit
+    onNavigate: (Screen) -> Unit,
+    onBack: () -> Unit
 ) {
     val settings by container.settingsStore.flow.collectAsState()
-    val vm: FolderViewModel = viewModel(factory = container.viewModelFactory)
-    val vmState by vm.state.collectAsState()
 
-    val folder = vmState.folders.find { it.folderPath == folderPath }
+    // 直接订阅仓库，不依赖列表页的 FolderViewModel。
+    val foldersMap by container.mediaRepository.folders.collectAsState()
+    val typedList = foldersMap[mediaType]
+
+    // 冷启动 / deep link 直达时仓库还没数据，触发一次加载。
+    // 列表页已经 load 过则 typedList 非 null，不会重复扫描。
+    LaunchedEffect(mediaType, typedList) {
+        if (typedList == null) {
+            val s = container.settingsStore.flow.value
+            container.mediaRepository.load(
+                type = mediaType,
+                excludedPaths = s.excludedPaths,
+                pdfTreeUri = s.pdfTreeUri
+            )
+        }
+    }
+
+    val folder = remember(typedList, folderPath) {
+        typedList?.find { it.folderPath == folderPath }
+    }
+
     if (folder == null) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("加载中…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxSize()) {
+            MixyTopBar(title = "文件夹", onBack = onBack)
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                if (typedList == null) {
+                    CircularProgressIndicator()
+                } else {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = "文件夹不存在或已被移除",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = "请返回上一页刷新列表",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
         }
         return
     }
@@ -86,11 +125,15 @@ fun FolderContentScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        FolderContentHeader(
-            folderName = folder.folderName,
-            folderPath = folder.folderPath,
-            itemCount = sortedItems.size,
-            onOpenViewSettings = { showViewSettings = true }
+        MixyTopBar(
+            title = folder.folderName.ifBlank { folder.folderPath },
+            subtitle = "${sortedItems.size} 项 · ${folder.folderPath}",
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = { showViewSettings = true }) {
+                    Icon(Icons.Filled.Tune, contentDescription = "视图设置")
+                }
+            }
         )
 
         Box(Modifier.fillMaxWidth().weight(1f)) {

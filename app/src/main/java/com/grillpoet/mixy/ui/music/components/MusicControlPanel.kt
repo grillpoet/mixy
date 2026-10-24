@@ -36,23 +36,14 @@ import com.grillpoet.mixy.ui.common.formatDuration
 /**
  * 音乐播放控制面板。
  *
- * 包含进度条、播放/暂停、上一首/下一首、循环模式切换。
- *
- * 性能设计：
- *  - 进度百分比用 [derivedStateOf] 计算，只在百分比变化时才触发重组
- *  - 进度条拖动时只用本地状态，松手才提交 seek
- *
- * @param state 当前播放状态。包含 position、duration、isPlaying、playMode 等。
- * @param onToggle 播放/暂停切换回调。
- * @param onNext 下一首回调。
- * @param onPrev 上一首回调。
- * @param onSeek 跳转到指定位置（毫秒）的回调。
- * @param onCycleMode 切换循环模式（顺序/单曲/随机）的回调。
- * @param modifier 外部传入的修饰符。
+ * position / duration 单独通过参数传入（不再从 state 里读），
+ * 因为它们在 MusicPlayerController 里是独立 StateFlow。
  */
 @Composable
 fun MusicControlPanel(
     state: MusicPlayerState,
+    position: Long,
+    duration: Long,
     onToggle: () -> Unit,
     onNext: () -> Unit,
     onPrev: () -> Unit,
@@ -61,13 +52,12 @@ fun MusicControlPanel(
     modifier: Modifier = Modifier
 ) {
     Column(modifier) {
-        // 进度条：拖动期间用本地状态，松手才提交 seek
         var isDragging by remember { mutableStateOf(false) }
         var dragProgress by remember { mutableFloatStateOf(0f) }
 
         val displayProgress = when {
             isDragging -> dragProgress
-            state.duration > 0 -> state.position.toFloat() / state.duration
+            duration > 0 -> position.toFloat() / duration
             else -> 0f
         }
 
@@ -79,7 +69,7 @@ fun MusicControlPanel(
             },
             onValueChangeFinished = {
                 isDragging = false
-                onSeek((dragProgress * state.duration).toLong())
+                onSeek((dragProgress * duration).toLong())
             },
             modifier = Modifier.fillMaxWidth()
         )
@@ -90,13 +80,13 @@ fun MusicControlPanel(
         ) {
             Text(
                 formatDuration(
-                    if (isDragging) (dragProgress * state.duration).toLong()
-                    else state.position
+                    if (isDragging) (dragProgress * duration).toLong()
+                    else position
                 ),
                 style = MaterialTheme.typography.labelSmall
             )
             Text(
-                formatDuration(state.duration),
+                formatDuration(duration),
                 style = MaterialTheme.typography.labelSmall
             )
         }

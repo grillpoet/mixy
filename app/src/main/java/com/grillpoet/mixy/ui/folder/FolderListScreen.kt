@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-
 package com.grillpoet.mixy.ui.folder
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -27,6 +25,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Tune
@@ -36,9 +35,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -51,18 +52,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.PermissionHelper
 import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
+import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.ViewMode
 import com.grillpoet.mixy.nav.Screen
 import com.grillpoet.mixy.ui.settings.ViewSettingsSheet
 import com.grillpoet.mixy.ui.widget.MediaThumbnail
 import com.grillpoet.mixy.ui.widget.MediaTypeChips
-import com.grillpoet.mixy.vm.FolderViewModel
+import com.grillpoet.mixy.ui.widget.MixyTopBar
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
 @Composable
@@ -75,14 +80,33 @@ fun FolderListScreen(
     val settings by container.settingsStore.flow.collectAsState()
     val context = LocalContext.current
 
-    var hasPermission by remember { mutableStateOf(PermissionHelper.hasAll(context)) }
     var showViewSettings by remember { mutableStateOf(false) }
+
+    // 权限按当前媒体类型判断。PDF 走 SAF，不需要媒体权限（恒为 true）。
+    var permissionTick by remember { mutableIntStateOf(0) }
+    val hasPermission = remember(state.currentType, permissionTick) {
+        PermissionHelper.hasForType(context, state.currentType)
+    }
+
+    // 从系统设置返回时刷新权限状态
+    val permissionLifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(permissionLifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                permissionTick++
+            }
+        }
+        permissionLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { permissionLifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        hasPermission = PermissionHelper.hasAll(context)
-        if (hasPermission) vm.refresh()
+        permissionTick++
+        if (PermissionHelper.hasForType(context, state.currentType)) {
+            vm.refresh()
+        }
     }
 
     val pdfLauncher = rememberLauncherForActivityResult(
@@ -93,8 +117,13 @@ fun FolderListScreen(
         }
     }
 
+    // 只在「权限从无到有」时刷新
+    var lastGranted by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(hasPermission) {
-        if (hasPermission) vm.refresh()
+        if (lastGranted == false && hasPermission) {
+            vm.refresh()
+        }
+        lastGranted = hasPermission
     }
 
     Column(
@@ -102,30 +131,21 @@ fun FolderListScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 顶部栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Mixy",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 8.dp)
-            )
-
-            IconButton(onClick = { showViewSettings = true }) {
-                Icon(Icons.Filled.Tune, contentDescription = "视图设置")
+        // ==================== 顶部栏 ====================
+        MixyTopBar(
+            title = "Mixy",
+            actions = {
+                IconButton(onClick = { vm.refresh() }) {
+                    Icon(Icons.Filled.Refresh, contentDescription = "刷新")
+                }
+                IconButton(onClick = { showViewSettings = true }) {
+                    Icon(Icons.Filled.Tune, contentDescription = "视图设置")
+                }
+                IconButton(onClick = { onNavigate(Screen.Settings) }) {
+                    Icon(Icons.Filled.Settings, contentDescription = "设置")
+                }
             }
-
-            IconButton(onClick = { onNavigate(Screen.Settings) }) {
-                Icon(Icons.Filled.Settings, contentDescription = "设置")
-            }
-        }
+        )
 
         // 搜索栏
         SearchBar(
@@ -136,7 +156,7 @@ fun FolderListScreen(
                 .padding(horizontal = 16.dp, vertical = 4.dp)
         )
 
-        // 媒体类型 chips：点击切换
+        // 媒体类型 chips
         MediaTypeChips(
             visibleTypes = state.visibleChips,
             current = state.currentType,
@@ -146,12 +166,14 @@ fun FolderListScreen(
 
         Spacer(Modifier.height(4.dp))
 
-        // 内容区
+        // ==================== 内容区 ====================
         Box(Modifier.fillMaxSize()) {
             when {
                 !hasPermission -> PermissionGuide(
                     onRequest = {
-                        permissionLauncher.launch(PermissionHelper.allPermissions())
+                        val perms = PermissionHelper.forType(state.currentType) +
+                                PermissionHelper.notificationPermissions()
+                        if (perms.isNotEmpty()) permissionLauncher.launch(perms)
                     }
                 )
 
@@ -169,7 +191,7 @@ fun FolderListScreen(
                     gridColumns = settings.gridColumns,
                     onItemClick = { index ->
                         if (state.searchResults.isNotEmpty()) {
-                            val cursor = com.grillpoet.mixy.data.model.PlaylistCursor(
+                            val cursor = PlaylistCursor(
                                 items = state.searchResults,
                                 currentIndex = index,
                                 sourceType = state.currentType
@@ -279,7 +301,7 @@ private fun FolderList(
             ) { _, folder ->
                 FolderCardGrid(
                     folder = folder,
-                    onClick = { onNavigate(Screen.FolderContent(folder.folderPath)) }
+                    onClick = { onNavigate(Screen.FolderContent(folder.type, folder.folderPath)) }
                 )
             }
         }
@@ -292,7 +314,7 @@ private fun FolderList(
             items(folders, key = { it.folderPath }) { folder ->
                 FolderCard(
                     folder = folder,
-                    onClick = { onNavigate(Screen.FolderContent(folder.folderPath)) }
+                    onClick = { onNavigate(Screen.FolderContent(folder.type, folder.folderPath)) }
                 )
             }
         }
@@ -533,7 +555,6 @@ private fun SearchResultGridCell(
     }
 }
 
-
 // ==================== 骨架屏 ====================
 
 @Composable
@@ -676,6 +697,7 @@ private fun PdfDirectoryGuide(onRequest: () -> Unit) {
         }
     }
 }
+
 @Composable
 private fun EmptyCoverFallback(
     fontSize: androidx.compose.ui.text.TextStyle
@@ -688,4 +710,3 @@ private fun EmptyCoverFallback(
         )
     }
 }
-

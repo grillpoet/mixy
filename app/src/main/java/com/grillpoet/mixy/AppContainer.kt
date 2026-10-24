@@ -6,6 +6,7 @@ import com.grillpoet.mixy.data.MediaCache
 import com.grillpoet.mixy.data.MediaRepository
 import com.grillpoet.mixy.data.MediaStoreDataSource
 import com.grillpoet.mixy.data.SettingsStore
+import com.grillpoet.mixy.player.PlaybackSession
 import com.grillpoet.mixy.player.MediaControllerManager
 import com.grillpoet.mixy.player.MusicPlayerController
 import com.grillpoet.mixy.player.VideoEngine
@@ -46,6 +47,16 @@ class AppContainer(context: Context) {
     /** 单例音乐控制器。首次访问时创建。 */
     val musicPlayerController: MusicPlayerController by lazy {
         MusicPlayerController(this)
+    }
+
+    /**
+     * 视频开始时停掉音乐。
+     *
+     * 视频模块不应直接依赖 MusicPlayerViewModel。互斥策略收口到容器，
+     * 未来做「画中画时音乐继续」之类的规则也只改这里。
+     */
+    fun stopMusicForVideo() {
+        musicPlayerController.clear()
     }
 
     /** 视频引擎。首次进入视频播放页时创建。 */

@@ -41,19 +41,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.ui.widget.MixyTopBar
 
 @Composable
-fun ExcludedPathsScreen(container: AppContainer) {
+fun ExcludedPathsScreen(
+    container: AppContainer,
+    onBack: () -> Unit
+) {
     val settings by container.settingsStore.flow.collectAsState()
     val context = LocalContext.current
 
     var showManualDialog by remember { mutableStateOf(false) }
 
-    // SAF 目录选择器
     val treeLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -93,32 +95,18 @@ fun ExcludedPathsScreen(container: AppContainer) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // 顶部栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "屏蔽文件夹",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 4.dp)
-            )
-
-            // 从文件选择器选
-            IconButton(onClick = { treeLauncher.launch(null) }) {
-                Icon(Icons.Filled.CreateNewFolder, "选择目录")
+        MixyTopBar(
+            title = "屏蔽文件夹",
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = { treeLauncher.launch(null) }) {
+                    Icon(Icons.Filled.CreateNewFolder, "选择目录")
+                }
+                IconButton(onClick = { showManualDialog = true }) {
+                    Icon(Icons.Filled.Edit, "手动输入")
+                }
             }
-
-            // 手动输入（备选）
-            IconButton(onClick = { showManualDialog = true }) {
-                Icon(Icons.Filled.Edit, "手动输入")
-            }
-        }
+        )
 
         Text(
             text = "选中的目录及其子目录内的媒体将不会显示",
@@ -160,15 +148,15 @@ fun ExcludedPathsScreen(container: AppContainer) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
-                            .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                            .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
                             Icons.Filled.CreateNewFolder, null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(end = 8.dp)
+                            modifier = Modifier.padding(end = 10.dp)
                         )
                         Text(
                             text = path,
@@ -210,10 +198,6 @@ fun ExcludedPathsScreen(container: AppContainer) {
         )
     }
 }
-
-// ============================================================
-// 手动输入对话框
-// ============================================================
 
 @Composable
 private fun AddPathDialog(
@@ -262,25 +246,10 @@ private fun AddPathDialog(
     )
 }
 
-// ============================================================
-// SAF URI → 路径片段
-// ============================================================
-
-/**
- * 从 SAF 树 URI 解析出相对路径片段。
- *
- * content://com.android.externalstorage.documents/tree/primary%3Atencent%2FMicroMsg
- *   → getTreeDocumentId = "primary:tencent/MicroMsg"
- *   → 去掉卷标 = "tencent/MicroMsg"
- *
- * 若用户选存储根，返回 null（不允许屏蔽根，否则屏蔽全部）。
- */
 private fun safUriToFragment(uri: Uri): String? {
     val docId = runCatching {
         DocumentsContract.getTreeDocumentId(uri)
     }.getOrNull() ?: return null
-
-    // docId 形如 "primary:tencent/MicroMsg" 或 "primary:"
     val noVolume = docId.substringAfter(':', docId)
     return noVolume.trim('/').ifBlank { null }
 }

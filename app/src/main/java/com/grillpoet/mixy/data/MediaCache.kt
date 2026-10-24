@@ -3,6 +3,14 @@ package com.grillpoet.mixy.data
 import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaType
 
+/**
+ * 带 TTL 的扫描结果缓存。
+ *
+ * 与 [MediaRepository.folders]（StateFlow）是两层缓存：
+ *  - 本类：跨「重新进入 App」保留，TTL 到期自动失效
+ *  - StateFlow：进程内 UI 订阅源
+ * 两者都由 [MediaRepository.invalidate] 显式清理，不要单独调本类。
+ */
 class MediaCache {
     private data class Bucket(val folders: List<MediaFolder>, val cachedAt: Long)
     private val cache = mutableMapOf<MediaType, Bucket>()
@@ -22,5 +30,4 @@ class MediaCache {
     }
 
     fun invalidate(type: MediaType) { cache.remove(type) }
-    fun invalidateAll() { cache.clear() }
 }

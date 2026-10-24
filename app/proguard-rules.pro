@@ -36,7 +36,9 @@
 # ---------- Kotlin ----------
 -keep class kotlin.Metadata { *; }
 -dontwarn kotlin.**
--dontwarn kotlinx.**
+-dontwarn kotlinx.coroutines.**
+-dontwarn kotlinx.coroutines.internal.**
+-dontwarn kotlinx.coroutines.debug.**
 
 
 # ---------- Android 组件 ----------
@@ -45,12 +47,6 @@
 -keep public class * extends android.app.Service
 -keep public class * extends android.content.BroadcastReceiver
 -keep public class * extends android.content.ContentProvider
-
-
-# ---------- ViewModel ----------
--keepclassmembers class * extends androidx.lifecycle.ViewModel {
-    <init>();
-}
 
 
 # ---------- Coil 3 自定义 Fetcher / Keyer ----------
@@ -66,11 +62,9 @@
 
 
 # ---------- Media3 ----------
--keep class androidx.media3.exoplayer.** { *; }
--keep class androidx.media3.session.** { *; }
--keep class androidx.media3.common.** { *; }
+# Media3 三个模块自带完整 consumer rules，会自动 keep 必要的类。
+# 这里只加 -dontwarn，不再 -keep 整个包（否则 APK 会大几百 KB）。
 -dontwarn androidx.media3.**
-
 -dontwarn com.google.common.**
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn com.google.j2objc.annotations.**
@@ -90,12 +84,6 @@
 
 # ---------- DocumentFile ----------
 -dontwarn androidx.documentfile.**
-
-
-# ---------- kotlinx.coroutines ----------
--dontwarn kotlinx.coroutines.**
--dontwarn kotlinx.coroutines.internal.**
--dontwarn kotlinx.coroutines.debug.**
 
 
 # ---------- Parcelable / Serializable ----------

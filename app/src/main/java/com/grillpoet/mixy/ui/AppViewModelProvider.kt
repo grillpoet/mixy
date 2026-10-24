@@ -6,7 +6,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.ui.music.MusicPlayerViewModel
 import com.grillpoet.mixy.ui.video.VideoPlayerViewModel
-import com.grillpoet.mixy.vm.FolderViewModel
+import com.grillpoet.mixy.ui.folder.FolderViewModel
 
 /**
  * 全应用 ViewModel 工厂。

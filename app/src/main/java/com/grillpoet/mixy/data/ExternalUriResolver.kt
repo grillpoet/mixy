@@ -36,7 +36,9 @@ object ExternalUriResolver {
             } else 0L
 
             val item = MediaItem(
-                id = uri.toString().hashCode().toLong(),
+                // 高位置 1 标记「外部来源」，与 MediaStore 的正数 id 区分。
+                // 队列内 id 仍唯一（同一队列来自同一次外部调用，只有一项）。
+                id = (uri.toString().hashCode().toLong() and 0x7FFFFFFFL) or (1L shl 62),
                 uri = uri,
                 displayName = meta.name,
                 folderPath = "",

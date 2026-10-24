@@ -1,6 +1,7 @@
 package com.grillpoet.mixy.ui.image
 
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -12,13 +13,19 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,7 +44,10 @@ import coil3.compose.AsyncImage
 import com.grillpoet.mixy.data.model.PlaylistCursor
 
 @Composable
-fun ImageViewerScreen(cursor: PlaylistCursor) {
+fun ImageViewerScreen(
+    cursor: PlaylistCursor,
+    onBack: () -> Unit
+) {
     if (cursor.items.isEmpty()) return
 
     val pagerState = rememberPagerState(
@@ -45,10 +55,15 @@ fun ImageViewerScreen(cursor: PlaylistCursor) {
         pageCount = { cursor.items.size }
     )
 
-    // 当前页是否放大
     var currentPageZoomed by remember { mutableStateOf(false) }
 
-    // 切页时重置缩放状态
+    // 返回键：放大时先退出缩放，否则退出页面
+    var resetZoomSignal by remember { mutableIntStateOf(0) }
+    BackHandler(enabled = currentPageZoomed) {
+        resetZoomSignal++
+        currentPageZoomed = false
+    }
+
     LaunchedEffect(pagerState.currentPage) {
         currentPageZoomed = false
     }
@@ -60,7 +75,6 @@ fun ImageViewerScreen(cursor: PlaylistCursor) {
     ) {
         HorizontalPager(
             state = pagerState,
-            // 放大时禁翻页；未放大时允许翻页
             userScrollEnabled = !currentPageZoomed,
             beyondViewportPageCount = 1,
             modifier = Modifier.fillMaxSize()
@@ -68,11 +82,28 @@ fun ImageViewerScreen(cursor: PlaylistCursor) {
             ZoomableImage(
                 uri = cursor.items[page].uri,
                 isCurrent = page == pagerState.currentPage,
+                resetSignal = resetZoomSignal,
                 onZoomChanged = { zoomed ->
                     if (page == pagerState.currentPage) {
                         currentPageZoomed = zoomed
                     }
                 }
+            )
+        }
+
+        // 返回按钮（黑底浮层）
+        IconButton(
+            onClick = onBack,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(8.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.4f))
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "返回",
+                tint = Color.White
             )
         }
 
@@ -94,28 +125,28 @@ fun ImageViewerScreen(cursor: PlaylistCursor) {
     }
 }
 
-/**
- * 缩放 / 平移。
- *
- * 关键：单指 + 未放大时**不消费**手势，让上层 HorizontalPager 处理翻页。
- * 双指任何时候都消费（缩放）；单指 + 已放大时消费（平移）。
- */
 @Composable
 private fun ZoomableImage(
     uri: Uri,
     isCurrent: Boolean,
+    resetSignal: Int,
     onZoomChanged: (Boolean) -> Unit
 ) {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(Size.Zero) }
 
-    // 上报缩放状态给 pager
+    LaunchedEffect(resetSignal) {
+        if (resetSignal > 0) {
+            scale = 1f
+            offset = Offset.Zero
+        }
+    }
+
     LaunchedEffect(scale, isCurrent) {
         if (isCurrent) onZoomChanged(scale > 1.01f)
     }
 
-    // 切页时重置
     LaunchedEffect(isCurrent) {
         if (!isCurrent) {
             scale = 1f
@@ -129,7 +160,6 @@ private fun ZoomableImage(
             .onSizeChanged {
                 containerSize = Size(it.width.toFloat(), it.height.toFloat())
             }
-            // 手势 1：缩放 + 平移
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -142,7 +172,6 @@ private fun ZoomableImage(
                         val panChange = event.calculatePan()
 
                         if (pointerCount >= 2) {
-                            // 双指：缩放 + 平移，始终消费
                             val newScale = (scale * zoomChange).coerceIn(1f, 5f)
                             scale = newScale
                             offset = if (newScale > 1.01f) {
@@ -152,15 +181,12 @@ private fun ZoomableImage(
                             }
                             event.changes.forEach { it.consume() }
                         } else if (scale > 1.01f) {
-                            // 单指 + 已放大：平移，消费
                             offset = clampOffset(offset + panChange, scale, containerSize)
                             event.changes.forEach { it.consume() }
                         }
-                        // 单指 + 未放大：不消费 → 让 pager 处理翻页
                     }
                 }
             }
-            // 手势 2：双击缩放
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -191,7 +217,6 @@ private fun ZoomableImage(
     }
 }
 
-/** 限制平移范围，避免拖出屏幕 */
 private fun clampOffset(
     offset: Offset,
     scale: Float,

@@ -5,12 +5,12 @@ import android.content.Context
 import android.database.Cursor
 import android.net.Uri
 import android.provider.MediaStore
+import androidx.core.net.toUri
 import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.core.net.toUri
 
 class MediaStoreDataSource(private val context: Context) {
 
@@ -24,10 +24,10 @@ class MediaStoreDataSource(private val context: Context) {
             MediaType.MUSIC -> queryAudio()
             MediaType.IMAGE -> queryImages()
             MediaType.VIDEO -> queryVideos()
-            MediaType.PDF   -> queryPdf(pdfTreeUri, onScanProgress)
+            MediaType.PDF -> queryPdf(pdfTreeUri, onScanProgress)
         }
         items
-            .filterNot { item -> excludedPaths.any { item.folderPath.contains(it) } }
+            .filterNot { item -> isExcluded(item.folderPath, excludedPaths) }
             .groupBy { it.folderPath }
             .map { (path, list) ->
                 MediaFolder(
@@ -36,10 +36,24 @@ class MediaStoreDataSource(private val context: Context) {
                     folderPath = path,
                     items = list.sortedByDescending { it.dateModified },
                     type = type,
-                    coverUri = list.firstOrNull()?.uri
                 )
             }
             .sortedBy { it.folderName.lowercase() }
+    }
+
+    /**
+     * 路径段匹配。把排除项和 folderPath 都规范成 "/a/b/c/" 形式，
+     * 再按完整段比较，避免 "Music" 误伤 "MyMusic"。
+     *
+     * 对绝对路径（MediaStore）和相对路径（SAF PDF）都适用。
+     */
+    private fun isExcluded(folderPath: String, excludedPaths: List<String>): Boolean {
+        if (excludedPaths.isEmpty()) return false
+        val target = "/" + folderPath.trim('/') + "/"
+        return excludedPaths.any { raw ->
+            val p = raw.trim('/')
+            p.isNotEmpty() && target.contains("/$p/", ignoreCase = true)
+        }
     }
 
     private fun queryAudio(): List<MediaItem> {
@@ -55,7 +69,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Audio.Media.DATA
         )
         val sel = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        return query(uri, proj, sel, null) { c ->
+        return query(uri, proj, sel) { c ->
             val data = c.getString(7) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(
@@ -84,7 +98,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Images.Media.DATA
         )
-        return query(uri, proj, null, null) { c ->
+        return query(uri, proj, null) { c ->
             val data = c.getString(6) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(
@@ -113,7 +127,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Video.Media.DATA
         )
-        return query(uri, proj, null, null) { c ->
+        return query(uri, proj, null) { c ->
             val data = c.getString(7) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(
@@ -140,13 +154,19 @@ class MediaStoreDataSource(private val context: Context) {
         return PdfFileScanner.scan(context, treeUri, onProgress)
     }
 
+    /**
+     * 通用查询。只支持无 selectionArgs 的查询——当前所有调用点都没有 args，
+     * 需要时再扩参数。
+     */
     private inline fun query(
-        uri: Uri, proj: Array<String>, sel: String?, args: Array<String>?,
+        uri: Uri,
+        proj: Array<String>,
+        sel: String?,
         mapper: (Cursor) -> MediaItem
     ): List<MediaItem> {
         val result = mutableListOf<MediaItem>()
         context.contentResolver.query(
-            uri, proj, sel, args,
+            uri, proj, sel, null,
             "${MediaStore.MediaColumns.DATE_MODIFIED} DESC"
         )?.use { c ->
             while (c.moveToNext()) result += mapper(c)

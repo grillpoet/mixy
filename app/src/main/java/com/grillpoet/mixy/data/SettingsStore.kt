@@ -23,16 +23,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/**
- * 应用的 Settings 模型。
- *
- * 通过 [SettingsStore.update] 变换，不要在外部直接构造新实例。
- *
- * 关于 chips：可见 chips = [chipOrder] - [chipHidden]。
- * 拖动排序时改 [chipOrder]，隐藏/恢复时改 [chipHidden]，两者正交。
- */
 @Immutable
 data class Settings(
     val theme: String = "system",
@@ -47,13 +40,11 @@ data class Settings(
         MediaType.MUSIC, MediaType.IMAGE, MediaType.VIDEO, MediaType.PDF
     ),
     val chipHidden: Set<MediaType> = emptySet(),
-    // ---- 显示（全局统一，两个浏览界面共用）----
     val viewMode: ViewMode = ViewMode.LIST,
     val gridColumns: Int = 3,
     val sortMode: SortMode = SortMode.NAME,
     val sortOrder: SortOrder = SortOrder.ASC
 ) {
-    /** 当前可见的 chips，顺序沿用 [chipOrder]。 */
     val visibleChips: List<MediaType>
         get() = chipOrder.filter { it !in chipHidden }
 
@@ -65,57 +56,46 @@ data class Settings(
     }
 }
 
-/**
- * 设置存储。
- *
- * 架构：内存 [MutableStateFlow] 作为唯一真源（供 UI 同步读取 .value），
- * DataStore 只负责持久化与冷启动恢复。
- *
- * 为什么这样设计：
- *  1. UI 需要同步读取（比如 AppContainer 里读 pdfTreeUri），DataStore 只有异步 Flow
- *  2. 用内存 Flow 做真源，update() 是同步的，写盘是异步的，UI 不会卡顿
- *  3. 启动时异步从 DataStore 恢复一次，之后内存为准
- *
- * 生命周期与 Application 一致，不手动 cancel scope。
- */
 class SettingsStore(private val context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _flow = MutableStateFlow(Settings())
-
-    /** 当前设置。UI 用 collectAsState() 订阅。 */
     val flow: StateFlow<Settings> = _flow.asStateFlow()
 
+    /**
+     * 冷启动恢复是否完成。
+     *
+     * 之前依赖方直接读 [flow].value 会读到默认值——DataStore 恢复是异步的。
+     * 依赖方应先 `awaitLoaded()` 或 `loaded.first { it }` 再读。
+     */
+    private val _loaded = MutableStateFlow(false)
+    val loaded: StateFlow<Boolean> = _loaded.asStateFlow()
+
     init {
-        // 冷启动恢复。失败时退回默认值，不阻塞 UI。
         scope.launch {
             runCatching {
                 _flow.value = context.dataStore.data.first().toSettings()
             }
+            // 恢复失败也置 true，避免依赖方永远挂起。
+            _loaded.value = true
         }
     }
 
-    /**
-     * 原子地变换设置。
-     *
-     * 内存立即更新；DataStore 异步写盘，写入失败不回滚内存（避免 UI 抖动）。
-     * 多线程调用时以「读取 - 变换 - 写入」的最终写入者为准（last-write-wins）。
-     */
+    /** 挂起到冷启动恢复完成。 */
+    suspend fun awaitLoaded() {
+        loaded.first { it }
+    }
+
     fun update(transform: (Settings) -> Settings) {
-        val new = _flow.value.let(transform)
-        _flow.value = new
+        _flow.update(transform)
         scope.launch {
             runCatching {
-                context.dataStore.edit { prefs -> new.writeTo(prefs) }
+                context.dataStore.edit { prefs -> _flow.value.writeTo(prefs) }
             }
         }
     }
 }
-
-// ==========================================================================
-// DataStore 定义与 Preferences <-> Settings 映射
-// ==========================================================================
 
 private val Context.dataStore by preferencesDataStore(name = "mixy_settings")
 
@@ -136,15 +116,13 @@ private object Keys {
     val sortOrder = stringPreferencesKey("sort_order")
 }
 
-/** 从 DataStore 快照还原 [Settings]。任何字段缺失都走默认值。 */
 private fun Preferences.toSettings(): Settings {
     val defaults = Settings()
     return Settings(
         theme = this[Keys.theme] ?: defaults.theme,
-        excludedPaths = this[Keys.excludedPaths]
-            ?.toList()
-            ?.takeIf { it.isNotEmpty() }
-            ?: defaults.excludedPaths,
+        // 区分「key 不存在」和「key 存在但为空」：
+        // 用户删光屏蔽项后应保持空列表，不能回退默认。
+        excludedPaths = this[Keys.excludedPaths]?.toList() ?: defaults.excludedPaths,
         musicDefaultPlayMode = this[Keys.musicPlayMode]
             ?.let { runCatching { PlayMode.valueOf(it) }.getOrNull() }
             ?: defaults.musicDefaultPlayMode,
@@ -157,7 +135,7 @@ private fun Preferences.toSettings(): Settings {
             ?.let { runCatching { PdfLayout.valueOf(it) }.getOrNull() }
             ?: defaults.pdfDefaultLayout,
         pdfTreeUri = this[Keys.pdfTreeUri],
-        // chipOrder 用逗号分隔字符串保序；chipHidden 用 set，无序即可
+        // chipOrder 不能为空（否则 UI 全空），解析失败或为空时兜底默认。
         chipOrder = this[Keys.chipOrder]
             ?.split(",")
             ?.mapNotNull { runCatching { MediaType.valueOf(it) }.getOrNull() }
@@ -180,7 +158,6 @@ private fun Preferences.toSettings(): Settings {
     )
 }
 
-/** 把 [Settings] 全量写入 DataStore。空值用 remove 显式删除。 */
 private fun Settings.writeTo(prefs: MutablePreferences) {
     prefs[Keys.theme] = theme
     prefs[Keys.excludedPaths] = excludedPaths.toSet()

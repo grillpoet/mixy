@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.vm
+package com.grillpoet.mixy.ui.folder
 
 import android.content.Context
 import android.content.Intent
@@ -13,12 +13,18 @@ import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.data.model.SortSpec
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.time.Duration.Companion.milliseconds
 
 data class FolderUiState(
     val currentType: MediaType = MediaType.MUSIC,
@@ -33,6 +39,7 @@ data class FolderUiState(
     val isSearching: Boolean get() = searchQuery.isNotBlank()
 }
 
+@OptIn(FlowPreview::class)
 class FolderViewModel(
     private val repo: MediaRepository,
     private val settings: SettingsStore
@@ -41,65 +48,87 @@ class FolderViewModel(
     private val _state = MutableStateFlow(FolderUiState())
     val state: StateFlow<FolderUiState> = _state.asStateFlow()
 
-    private var currentSettings: Settings = settings.flow.value
-
-    /**
-     * 加载代次。
-     *
-     * 每次 [load] 递增。异步回调（进度、收尾写入）拿到的是调用时的
-     * 快照值，与当前值不一致即代表期间用户已切走，结果丢弃。
-     *
-     * 用于解决：切到别的类型后，慢加载（尤其 PDF 扫描）完成时
-     * 把 state.folders 覆盖成旧类型的列表。
-     */
+    private var currentSettings: Settings = Settings()
     private var loadGeneration = 0
+    private var prevPdfTreeUri: String? = null
 
     init {
         viewModelScope.launch {
-            combine(repo.folders, settings.flow) { map, s -> map to s }
-                .collect { (map, s) ->
-                    currentSettings = s
+            // 冷启动必须先等 DataStore 恢复，否则首次 load 用默认设置
+            // （排除路径、PDF 目录都不对）。
+            settings.awaitLoaded()
+            currentSettings = settings.flow.value
 
-                    val visible = s.visibleChips.ifEmpty { listOf(MediaType.MUSIC) }
-                    val current = _state.value.currentType
-                    val fixed = if (current !in visible) visible.first() else current
+            launch {
+                // 搜索输入去抖后作为第三路流参与 combine，
+                // 让 searchResults 只有一个写入源。
+                val queryFlow = _state
+                    .map { it.searchQuery }
+                    .distinctUntilChanged()
+                    .debounce(200.milliseconds)
 
-                    val rawList = map[fixed].orEmpty()
-                    val sortedFolders = MediaSorter.sortFolders(
-                        rawList, SortSpec(s.sortMode, s.sortOrder)
-                    )
+                combine(repo.folders, settings.flow, queryFlow) { map, s, q ->
+                    Triple(map, s, q)
+                }.collect { (map, s, q) -> applyState(map, s, q) }
+            }
 
-                    val query = _state.value.searchQuery
-                    val newSearchResults: List<MediaItem> = if (query.isBlank()) {
-                        _state.value.searchResults
-                    } else {
-                        val all = rawList.flatMap { it.items }
-                        val filtered = all.filter {
-                            it.displayName.contains(query, ignoreCase = true) ||
-                                    it.folderName.contains(query, ignoreCase = true)
-                        }
-                        MediaSorter
-                            .sortItems(filtered, SortSpec(s.sortMode, s.sortOrder))
-                            .take(500)
-                    }
+            selectType(MediaType.MUSIC)
+        }
+    }
 
-                    _state.update {
-                        it.copy(
-                            currentType = fixed,
-                            visibleChips = visible,
-                            folders = sortedFolders,
-                            searchResults = newSearchResults,
-                            isLoading = false,
-                            skeletonVisible = false,
-                            scanProgress = null
-                        )
-                    }
+    private fun applyState(
+        map: Map<MediaType, List<MediaFolder>>,
+        s: Settings,
+        query: String
+    ) {
+        currentSettings = s
 
-                    if (current !in visible) load(fixed)
-                }
+        val newPdfUri = s.pdfTreeUri
+        if (prevPdfTreeUri != null && prevPdfTreeUri != newPdfUri) {
+            repo.invalidate(MediaType.PDF)
+            if (_state.value.currentType == MediaType.PDF) {
+                load(MediaType.PDF, forceRefresh = true)
+            }
+        }
+        prevPdfTreeUri = newPdfUri
+
+        val visible = s.visibleChips.ifEmpty { listOf(MediaType.MUSIC) }
+        val current = _state.value.currentType
+        val fixed = if (current !in visible) visible.first() else current
+
+        val rawList = map[fixed].orEmpty()
+        val sortedFolders = MediaSorter.sortFolders(
+            rawList, SortSpec(s.sortMode, s.sortOrder)
+        )
+
+        val newSearchResults: List<MediaItem> = if (query.isBlank()) {
+            emptyList()
+        } else {
+            val all = rawList.flatMap { it.items }
+            MediaSorter.sortItems(
+                all.filter {
+                    it.displayName.contains(query, ignoreCase = true) ||
+                            it.folderName.contains(query, ignoreCase = true)
+                },
+                SortSpec(s.sortMode, s.sortOrder)
+            ).take(500)
         }
 
-        selectType(MediaType.MUSIC)
+        val hasData = map.containsKey(fixed)
+
+        _state.update {
+            it.copy(
+                currentType = fixed,
+                visibleChips = visible,
+                folders = sortedFolders,
+                searchResults = newSearchResults,
+                isLoading = false,
+                skeletonVisible = !hasData,
+                scanProgress = null
+            )
+        }
+
+        if (current !in visible) load(fixed)
     }
 
     fun selectType(type: MediaType) {
@@ -129,21 +158,9 @@ class FolderViewModel(
         load(_state.value.currentType, forceRefresh = true)
     }
 
+    /** 只更新输入框显示值。搜索结果由 combine 在 200ms 去抖后派生。 */
     fun updateSearch(q: String) {
-        _state.update { it.copy(searchQuery = q, searchResults = emptyList()) }
-        if (q.isBlank()) return
-        viewModelScope.launch {
-            val all = _state.value.folders.flatMap { it.items }
-            val filtered = all.filter {
-                it.displayName.contains(q, ignoreCase = true) ||
-                        it.folderName.contains(q, ignoreCase = true)
-            }
-            val sorted = MediaSorter.sortItems(
-                filtered,
-                SortSpec(currentSettings.sortMode, currentSettings.sortOrder)
-            ).take(500)
-            _state.update { it.copy(searchResults = sorted) }
-        }
+        _state.update { it.copy(searchQuery = q) }
     }
 
     fun setPdfTreeUri(uri: Uri, context: Context) {
@@ -154,9 +171,6 @@ class FolderViewModel(
             )
         }
         settings.update { it.copy(pdfTreeUri = uri.toString()) }
-        // 强制清缓存 + 刷新
-        repo.invalidate(MediaType.PDF)
-        load(MediaType.PDF, forceRefresh = true)
     }
 
     private fun load(type: MediaType, forceRefresh: Boolean = false) {
@@ -165,11 +179,16 @@ class FolderViewModel(
             val excluded = currentSettings.excludedPaths
             val pdfUri = currentSettings.pdfTreeUri
 
+            val lastProgressAt = AtomicLong(0L)
             val onProgress: ((Int) -> Unit)? =
                 if (type == MediaType.PDF && pdfUri != null) {
                     { count ->
                         if (loadGeneration == generation) {
-                            _state.update { it.copy(scanProgress = count) }
+                            val now = System.currentTimeMillis()
+                            if (count <= 1 || now - lastProgressAt.get() >= 100) {
+                                lastProgressAt.set(now)
+                                _state.update { it.copy(scanProgress = count) }
+                            }
                         }
                     }
                 } else null
@@ -186,13 +205,17 @@ class FolderViewModel(
                 onScanProgress = onProgress
             )
 
-            // 期间用户可能已切换到别的类型：丢弃本次结果。
             if (loadGeneration != generation) return@launch
 
+            // 兜底写入排序后的结果，避免 combine 因 StateFlow equals 去重
+            // 未触发时留下未排序数据。
             val list = repo.folders.value[type].orEmpty()
+            val sorted = MediaSorter.sortFolders(
+                list, SortSpec(currentSettings.sortMode, currentSettings.sortOrder)
+            )
             _state.update {
                 it.copy(
-                    folders = list,
+                    folders = sorted,
                     isLoading = false,
                     skeletonVisible = false,
                     scanProgress = null

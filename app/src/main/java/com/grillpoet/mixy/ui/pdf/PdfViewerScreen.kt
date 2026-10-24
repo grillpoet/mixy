@@ -1,11 +1,6 @@
 package com.grillpoet.mixy.ui.pdf
 
-import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Color
-import android.graphics.pdf.PdfRenderer
-import android.net.Uri
-import android.os.ParcelFileDescriptor
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -15,14 +10,12 @@ import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -60,112 +53,19 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.model.PdfLayout
 import com.grillpoet.mixy.data.model.PlaylistCursor
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
-import java.io.File
+import com.grillpoet.mixy.data.pdf.PdfPageRenderer
+import com.grillpoet.mixy.ui.widget.MixyTopBar
 import androidx.compose.ui.graphics.Color as ComposeColor
-
-// ============================================================
-// 渲染器
-// ============================================================
-
-class PdfPageRenderer private constructor(
-    private val tempFile: File?,
-    private var pfd: ParcelFileDescriptor?,
-    private var renderer: PdfRenderer?,
-    private val renderWidth: Int
-) : AutoCloseable {
-
-    private val renderMutex = Mutex()
-    @Volatile private var closed = false
-
-    val pageCount: Int
-        get() = if (closed) 0 else (renderer?.pageCount ?: 0)
-
-    suspend fun renderPage(index: Int): Bitmap? = renderMutex.withLock {
-        withContext(Dispatchers.IO) {
-            if (closed) return@withContext null
-            val r = renderer ?: return@withContext null
-            runCatching {
-                r.openPage(index).use { page ->
-                    val scale = renderWidth.toFloat() / page.width
-                    val height = (page.height * scale).toInt().coerceAtLeast(1)
-                    val bmp = Bitmap.createBitmap(
-                        renderWidth, height, Bitmap.Config.ARGB_8888
-                    )
-                    bmp.eraseColor(Color.WHITE)
-                    page.render(
-                        bmp, null, null,
-                        PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY
-                    )
-                    bmp
-                }
-            }.getOrNull()
-        }
-    }
-
-    override fun close() {
-        if (closed) return
-        closed = true
-        runCatching { renderer?.close() }
-        renderer = null
-        runCatching { pfd?.close() }
-        pfd = null
-        runCatching { tempFile?.delete() }
-    }
-
-    companion object {
-        suspend fun create(
-            context: Context,
-            uri: Uri,
-            renderWidth: Int
-        ): Result<PdfPageRenderer> = withContext(Dispatchers.IO) {
-            val direct = runCatching {
-                val pfd = context.contentResolver
-                    .openFileDescriptor(uri, "r")
-                    ?: error("openFileDescriptor 返回 null")
-                val renderer = PdfRenderer(pfd)
-                renderer.pageCount
-                PdfPageRenderer(null, pfd, renderer, renderWidth)
-            }
-            direct.getOrNull()?.let { return@withContext Result.success(it) }
-
-            runCatching {
-                val temp = File(
-                    context.cacheDir,
-                    "pdf_${System.currentTimeMillis()}.pdf"
-                )
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    temp.outputStream().use { input.copyTo(it) }
-                } ?: error("无法打开输入流")
-
-                val pfd = ParcelFileDescriptor.open(
-                    temp,
-                    ParcelFileDescriptor.MODE_READ_ONLY
-                )
-                val renderer = PdfRenderer(pfd)
-                renderer.pageCount
-                PdfPageRenderer(temp, pfd, renderer, renderWidth)
-            }
-        }
-    }
-}
-
-// ============================================================
-// 主界面
-// ============================================================
 
 @Composable
 fun PdfViewerScreen(
     cursor: PlaylistCursor,
-    container: AppContainer
+    container: AppContainer,
+    onBack: () -> Unit
 ) {
     if (cursor.items.isEmpty()) return
 
@@ -198,14 +98,17 @@ fun PdfViewerScreen(
     val result = rendererState
 
     if (result == null) {
-        Box(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator()
-                Spacer(Modifier.height(12.dp))
-                Text("正在打开…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxSize()) {
+            MixyTopBar(title = fileName, onBack = onBack)
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(12.dp))
+                    Text("正在打开…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         return
@@ -213,22 +116,25 @@ fun PdfViewerScreen(
 
     val renderer = result.getOrNull()
     if (renderer == null) {
-        Box(
-            Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(32.dp)
+        Column(Modifier.fillMaxSize()) {
+            MixyTopBar(title = fileName, onBack = onBack)
+            Box(
+                Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
             ) {
-                Text("无法打开该 PDF", style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    fileName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.padding(32.dp)
+                ) {
+                    Text("无法打开该 PDF", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        fileName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
             }
         }
         return
@@ -236,8 +142,7 @@ fun PdfViewerScreen(
 
     var vertical by remember {
         mutableStateOf(
-            container.settingsStore.flow.value.pdfDefaultLayout ==
-                PdfLayout.VERTICAL
+            container.settingsStore.flow.value.pdfDefaultLayout == PdfLayout.VERTICAL
         )
     }
     var currentPage by remember { mutableIntStateOf(0) }
@@ -245,37 +150,23 @@ fun PdfViewerScreen(
     Column(
         Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
     ) {
-        // 顶部栏
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = fileName,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "${currentPage + 1} / ${renderer.pageCount}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.width(4.dp))
-            IconButton(onClick = {
-                vertical = !vertical
-                currentPage = 0
-            }) {
-                Icon(
-                    imageVector = if (vertical) Icons.Filled.SwapHoriz
-                    else Icons.Filled.SwapVert,
-                    contentDescription = if (vertical) "切换横向" else "切换纵向"
-                )
+        MixyTopBar(
+            title = fileName,
+            subtitle = "${currentPage + 1} / ${renderer.pageCount}",
+            onBack = onBack,
+            actions = {
+                IconButton(onClick = {
+                    vertical = !vertical
+                    currentPage = 0
+                }) {
+                    Icon(
+                        imageVector = if (vertical) Icons.Filled.SwapHoriz
+                        else Icons.Filled.SwapVert,
+                        contentDescription = if (vertical) "切换横向" else "切换纵向"
+                    )
+                }
             }
-        }
+        )
 
         Box(
             Modifier
@@ -299,17 +190,12 @@ fun PdfViewerScreen(
     }
 }
 
-// ============================================================
-// 纵向：LazyColumn 连续滚动
-// ============================================================
-
 @Composable
 private fun VerticalPdf(
     renderer: PdfPageRenderer,
     onPageChange: (Int) -> Unit
 ) {
     val listState = rememberLazyListState()
-
     val currentIndex by remember {
         derivedStateOf { listState.firstVisibleItemIndex }
     }
@@ -328,10 +214,6 @@ private fun VerticalPdf(
         }
     }
 }
-
-// ============================================================
-// 横向：HorizontalPager 翻页
-// ============================================================
 
 @Composable
 private fun HorizontalPdf(
@@ -360,17 +242,7 @@ private fun HorizontalPdf(
     }
 }
 
-// ============================================================
-// 单页（独立缩放）
-//
-// 手势规则（与 ImageViewer 一致）：
-//   单指 + 未缩放  → 不消费，让 LazyColumn / Pager 处理滚动/翻页
-//   单指 + 已缩放  → 平移
-//   双指           → 缩放 + 平移
-//   双击 + 未缩放  → 放大到 2.5x
-//   双击 + 已缩放  → 还原
-// ============================================================
-
+@Suppress("ProduceStateDoesNotAssignValue")
 @Composable
 private fun PdfPageZoomable(
     renderer: PdfPageRenderer,
@@ -395,7 +267,6 @@ private fun PdfPageZoomable(
             .onSizeChanged {
                 containerSize = Size(it.width.toFloat(), it.height.toFloat())
             }
-            // 缩放 + 平移
             .pointerInput(Unit) {
                 awaitEachGesture {
                     awaitFirstDown(requireUnconsumed = false)
@@ -408,7 +279,6 @@ private fun PdfPageZoomable(
                         val panChange = event.calculatePan()
 
                         if (pointerCount >= 2) {
-                            // 双指：缩放 + 平移，消费
                             val newScale = (scale * zoomChange).coerceIn(1f, 5f)
                             scale = newScale
                             offset = if (newScale > 1.01f) {
@@ -416,15 +286,12 @@ private fun PdfPageZoomable(
                             } else Offset.Zero
                             event.changes.forEach { it.consume() }
                         } else if (scale > 1.01f) {
-                            // 单指 + 已缩放：平移，消费
                             offset = clampOffset(offset + panChange, scale, containerSize)
                             event.changes.forEach { it.consume() }
                         }
-                        // 单指 + 未缩放：不消费，父级处理滚动/翻页
                     }
                 }
             }
-            // 双击
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = { tapOffset ->
@@ -473,10 +340,6 @@ private fun PdfPageZoomable(
         }
     }
 }
-
-// ============================================================
-// 工具
-// ============================================================
 
 private fun clampOffset(offset: Offset, scale: Float, size: Size): Offset {
     if (scale <= 1.01f || size.width == 0f) return Offset.Zero

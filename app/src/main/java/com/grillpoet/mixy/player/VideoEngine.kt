@@ -2,10 +2,12 @@ package com.grillpoet.mixy.player
 
 import android.content.Context
 import android.net.Uri
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.CoroutineScope
@@ -18,7 +20,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * 视频引擎。
+ *
+ * [DefaultLoadControl] 是 Media3 的 unstable API，整个类标记 @OptIn 抑制
+ * UnsafeOptInUsageError。
+ *
+ * 生命周期：App 级单例，[release] 当前无调用点——这是有意取舍，
+ * 复用 ExoPlayer 加快二次进入首帧，代价是解码器随进程存活。
+ * 若未来引入 per-screen ViewModel 作用域，应在页面退出时 release 并重建。
+ */
+@OptIn(UnstableApi::class)
 class VideoEngine(context: Context) {
 
     val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
@@ -114,7 +128,7 @@ class VideoEngine(context: Context) {
         tickJob = scope.launch {
             while (isActive) {
                 _position.value = player.currentPosition.coerceAtLeast(0)
-                delay(200)
+                delay(200.milliseconds)
             }
         }
     }

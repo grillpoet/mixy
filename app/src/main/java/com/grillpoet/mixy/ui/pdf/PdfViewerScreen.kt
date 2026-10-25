@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
@@ -54,11 +55,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.model.PdfLayout
 import com.grillpoet.mixy.data.model.PlaylistCursor
-import com.grillpoet.mixy.data.pdf.PdfPageRenderer
-import com.grillpoet.mixy.ui.widget.MixyTopBar
+import com.grillpoet.mixy.pdf.PdfPageRenderer
+import com.grillpoet.mixy.ui.common.MixyTopBar
 import androidx.compose.ui.graphics.Color as ComposeColor
 
 @Composable
@@ -107,7 +109,7 @@ fun PdfViewerScreen(
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     CircularProgressIndicator()
                     Spacer(Modifier.height(12.dp))
-                    Text("正在打开…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(stringResource(R.string.pdf_opening), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -126,7 +128,7 @@ fun PdfViewerScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(32.dp)
                 ) {
-                    Text("无法打开该 PDF", style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(R.string.pdf_cannot_open), style = MaterialTheme.typography.titleMedium)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         fileName,
@@ -162,7 +164,10 @@ fun PdfViewerScreen(
                     Icon(
                         imageVector = if (vertical) Icons.Filled.SwapHoriz
                         else Icons.Filled.SwapVert,
-                        contentDescription = if (vertical) "切换横向" else "切换纵向"
+                        contentDescription = stringResource(
+                            if (vertical) R.string.pdf_switch_horizontal
+                            else R.string.pdf_switch_vertical
+                        )
                     )
                 }
             }
@@ -318,7 +323,7 @@ private fun PdfPageZoomable(
         if (bitmap != null) {
             Image(
                 bitmap = bitmap!!.asImageBitmap(),
-                contentDescription = "第 ${pageIndex + 1} 页",
+                contentDescription = stringResource(R.string.pdf_page, pageIndex + 1),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
@@ -332,7 +337,7 @@ private fun PdfPageZoomable(
         } else {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    "渲染中…",
+                    stringResource(R.string.pdf_rendering),
                     color = ComposeColor.White,
                     style = MaterialTheme.typography.bodySmall
                 )

@@ -28,7 +28,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.model.PlayMode
 import com.grillpoet.mixy.player.MusicPlayerState
 import com.grillpoet.mixy.ui.common.formatDuration
@@ -105,25 +107,25 @@ fun MusicControlPanel(
                         PlayMode.REPEAT_ONE -> Icons.Filled.RepeatOne
                         PlayMode.SHUFFLE -> Icons.Filled.Shuffle
                     },
-                    contentDescription = "循环模式"
+                    contentDescription = stringResource(R.string.music_play_mode)
                 )
             }
 
             IconButton(onClick = onPrev, enabled = state.cursor.hasPrev) {
-                Icon(Icons.Filled.SkipPrevious, contentDescription = "上一首")
+                Icon(Icons.Filled.SkipPrevious, contentDescription = stringResource(R.string.music_previous))
             }
 
             IconButton(onClick = onToggle, modifier = Modifier.size(64.dp)) {
                 Icon(
                     imageVector = if (state.isPlaying) Icons.Filled.Pause
                     else Icons.Filled.PlayArrow,
-                    contentDescription = "播放/暂停",
+                    contentDescription = stringResource(R.string.music_play_pause),
                     modifier = Modifier.size(40.dp)
                 )
             }
 
             IconButton(onClick = onNext, enabled = state.cursor.hasNext) {
-                Icon(Icons.Filled.SkipNext, contentDescription = "下一首")
+                Icon(Icons.Filled.SkipNext, contentDescription = stringResource(R.string.music_next))
             }
 
             Spacer(Modifier.size(48.dp))

@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.data.cover
+package com.grillpoet.mixy.cover
 
 import android.content.Context
 import android.graphics.Bitmap

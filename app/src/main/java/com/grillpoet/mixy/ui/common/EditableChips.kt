@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.ui.widget
+package com.grillpoet.mixy.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -28,10 +28,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.model.MediaType
+import com.grillpoet.mixy.ui.common.label
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -141,7 +144,7 @@ private fun ChipItem(
     ) {
         Icon(
             imageVector = Icons.Filled.DragHandle,
-            contentDescription = "拖动排序",
+            contentDescription = stringResource(R.string.action_drag_to_reorder),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
             modifier = Modifier
                 .size(20.dp)
@@ -151,7 +154,7 @@ private fun ChipItem(
         Spacer(Modifier.width(4.dp))
 
         Text(
-            text = type.label,
+            text = type.label(),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -167,7 +170,7 @@ private fun ChipItem(
         ) {
             Icon(
                 imageVector = Icons.Filled.Close,
-                contentDescription = "隐藏",
+                contentDescription = stringResource(R.string.action_hide),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(14.dp)
             )
@@ -188,7 +191,7 @@ private fun HiddenRow(
             .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
         Text(
-            text = "已隐藏（点击恢复）",
+            text = stringResource(R.string.settings_media_types_hidden),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -220,7 +223,7 @@ private fun HiddenChip(type: MediaType, onRestore: () -> Unit) {
         )
         Spacer(Modifier.width(4.dp))
         Text(
-            text = type.label,
+            text = type.label(),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.alpha(0.7f)

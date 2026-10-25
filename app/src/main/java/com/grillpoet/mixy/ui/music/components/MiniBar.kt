@@ -27,14 +27,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.AppContainer
-import com.grillpoet.mixy.data.cover.AudioCover
+import com.grillpoet.mixy.cover.AudioCover
 
 /**
  * 底部迷你播放条。
@@ -111,7 +113,10 @@ fun MiniBar(
             Icon(
                 imageVector = if (s.isPlaying) Icons.Filled.Pause
                 else Icons.Filled.PlayArrow,
-                contentDescription = if (s.isPlaying) "暂停" else "播放",
+                contentDescription = stringResource(
+                    if (s.isPlaying) R.string.mini_bar_pause
+                    else R.string.mini_bar_play
+                ),
                 tint = MaterialTheme.colorScheme.onSurface
             )
         }
@@ -119,7 +124,7 @@ fun MiniBar(
         IconButton(onClick = { container.musicPlayerController.clear() }) {
             Icon(
                 Icons.Filled.Close,
-                contentDescription = "关闭",
+                contentDescription = stringResource(R.string.mini_bar_close),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

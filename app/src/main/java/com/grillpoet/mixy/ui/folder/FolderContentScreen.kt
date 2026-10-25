@@ -10,33 +10,42 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.MediaSorter
 import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.SortSpec
 import com.grillpoet.mixy.data.model.ViewMode
-import com.grillpoet.mixy.nav.Screen
+import com.grillpoet.mixy.ui.common.MixyTopBar
+import com.grillpoet.mixy.ui.common.displayFolderPath
 import com.grillpoet.mixy.ui.folder.components.FolderGridList
 import com.grillpoet.mixy.ui.folder.components.FolderRowList
+import com.grillpoet.mixy.ui.nav.Screen
 import com.grillpoet.mixy.ui.settings.ViewSettingsSheet
-import com.grillpoet.mixy.ui.widget.MixyTopBar
+import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderContentScreen(
     mediaType: MediaType,
@@ -47,19 +56,15 @@ fun FolderContentScreen(
 ) {
     val settings by container.settingsStore.flow.collectAsState()
 
-    // 直接订阅仓库，不依赖列表页的 FolderViewModel。
     val foldersMap by container.mediaRepository.folders.collectAsState()
     val typedList = foldersMap[mediaType]
 
-    // 冷启动 / deep link 直达时仓库还没数据，触发一次加载。
-    // 列表页已经 load 过则 typedList 非 null，不会重复扫描。
     LaunchedEffect(mediaType, typedList) {
         if (typedList == null) {
-            val s = container.settingsStore.flow.value
             container.mediaRepository.load(
                 type = mediaType,
-                excludedPaths = s.excludedPaths,
-                pdfTreeUri = s.pdfTreeUri
+                excludedPaths = settings.excludedPaths,
+                pdfTreeUri = settings.pdfTreeUri
             )
         }
     }
@@ -70,7 +75,10 @@ fun FolderContentScreen(
 
     if (folder == null) {
         Column(Modifier.fillMaxSize()) {
-            MixyTopBar(title = "文件夹", onBack = onBack)
+            MixyTopBar(
+                title = stringResource(R.string.content_folder_title),
+                onBack = onBack
+            )
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 if (typedList == null) {
                     CircularProgressIndicator()
@@ -80,12 +88,12 @@ fun FolderContentScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            text = "文件夹不存在或已被移除",
+                            text = stringResource(R.string.folder_not_found),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "请返回上一页刷新列表",
+                            text = stringResource(R.string.folder_not_found_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -98,6 +106,14 @@ fun FolderContentScreen(
     }
 
     var showViewSettings by remember { mutableStateOf(false) }
+
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val effectiveColumns = if (isLandscape) {
+        (settings.gridColumns + 1).coerceAtMost(5)
+    } else {
+        settings.gridColumns
+    }
 
     val sortedItems = remember(folder.items, settings.sortMode, settings.sortOrder) {
         MediaSorter.sortItems(
@@ -120,6 +136,18 @@ fun FolderContentScreen(
         }
     }
 
+    val scope = rememberCoroutineScope()
+    var isRefreshing by remember { mutableStateOf(false) }
+
+    val displayPath = remember(folder.folderPath) {
+        displayFolderPath(folder.folderPath)
+    }
+    val subtitle = if (displayPath.isBlank()) {
+        stringResource(R.string.folder_item_count, sortedItems.size)
+    } else {
+        stringResource(R.string.folder_subtitle, sortedItems.size, displayPath)
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -127,20 +155,44 @@ fun FolderContentScreen(
     ) {
         MixyTopBar(
             title = folder.folderName.ifBlank { folder.folderPath },
-            subtitle = "${sortedItems.size} 项 · ${folder.folderPath}",
+            subtitle = subtitle,
             onBack = onBack,
             actions = {
                 IconButton(onClick = { showViewSettings = true }) {
-                    Icon(Icons.Filled.Tune, contentDescription = "视图设置")
+                    Icon(
+                        Icons.Filled.Tune,
+                        contentDescription = stringResource(R.string.action_view_settings)
+                    )
                 }
             }
         )
 
-        Box(Modifier.fillMaxWidth().weight(1f)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                if (isRefreshing) return@PullToRefreshBox
+                isRefreshing = true
+                scope.launch {
+                    try {
+                        container.mediaRepository.load(
+                            type = mediaType,
+                            forceRefresh = true,
+                            excludedPaths = settings.excludedPaths,
+                            pdfTreeUri = settings.pdfTreeUri
+                        )
+                    } finally {
+                        isRefreshing = false
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) {
             if (settings.viewMode == ViewMode.GRID) {
                 FolderGridList(
                     items = sortedItems,
-                    gridColumns = settings.gridColumns,
+                    gridColumns = effectiveColumns,
                     onItemClick = onItemClick
                 )
             } else {

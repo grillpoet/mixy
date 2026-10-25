@@ -28,7 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.ui.common.formatDuration
-import com.grillpoet.mixy.ui.widget.MediaThumbnail
+import com.grillpoet.mixy.ui.common.MediaThumbnail
 
 /**
  * 媒体项列表视图。

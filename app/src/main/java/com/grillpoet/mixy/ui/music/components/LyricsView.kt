@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -33,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.LyricLine
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -47,7 +49,7 @@ import kotlin.time.Duration.Companion.milliseconds
  *  - 松手时把中心行作为 seek 目标
  *  - 切歌时重置拖动抑制窗口，让新歌的歌词立刻能自动滚动
  *
- * @param lyrics 歌词行列表。空列表时显示"暂无歌词"。
+ * @param lyrics 歌词行列表。空列表时显示stringResource(R.string.music_no_lyrics)。
  * @param position 当前播放位置 (ms)。高频更新，来自播放器。
  * @param onSeek 用户拖动歌词后跳转到指定位置 (ms) 的回调。
  * @param modifier 外部传入的修饰符。
@@ -62,7 +64,7 @@ fun LyricsView(
     if (lyrics.isEmpty()) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                "暂无歌词",
+                stringResource(R.string.music_no_lyrics),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium
             )

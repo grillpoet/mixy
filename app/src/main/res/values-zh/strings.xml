@@ -1,0 +1,133 @@
+<resources>
+    <string name="app_name">Mixy</string>
+
+    <string name="action_back">返回</string>
+    <string name="action_settings">设置</string>
+    <string name="action_search">搜索</string>
+    <string name="action_clear">清除</string>
+    <string name="action_retry">重试</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_add">添加</string>
+    <string name="action_delete">删除</string>
+    <string name="action_close">关闭</string>
+    <string name="action_hide">隐藏</string>
+    <string name="action_drag_to_reorder">拖动排序</string>
+    <string name="action_view_settings">视图设置</string>
+
+    <string name="media_type_music">音乐</string>
+    <string name="media_type_image">图片</string>
+    <string name="media_type_video">视频</string>
+    <string name="media_type_pdf">PDF</string>
+
+    <string name="folder_empty_title">暂无文件夹</string>
+    <string name="folder_empty_desc">该类型下没有找到媒体</string>
+    <string name="folder_not_found">文件夹不存在或已被移除</string>
+    <string name="folder_not_found_hint">请返回上一页刷新列表</string>
+    <string name="folder_fallback_name">外部</string>
+    <string name="folder_item_count">%d 项</string>
+    <string name="folder_subtitle">%1$d 项 · %2$s</string>
+
+    <string name="permission_title">需要媒体权限</string>
+    <string name="permission_desc">Mixy 需要读取媒体文件才能展示内容</string>
+    <string name="permission_denied">权限已被拒绝。请到系统设置中手动开启，返回后会自动刷新。</string>
+    <string name="permission_grant">授予权限</string>
+    <string name="permission_open_settings">去设置</string>
+
+    <string name="error_load_failed">加载失败</string>
+
+    <string name="search_hint">搜索</string>
+    <string name="search_no_results">无结果</string>
+
+    <string name="pdf_folder_title">选择 PDF 目录</string>
+    <string name="pdf_folder_desc">Android 系统不索引 PDF，请选择一个包含 PDF 的目录</string>
+    <string name="pdf_folder_choose">选择目录</string>
+    <string name="pdf_scanning">已扫描 %d 个 PDF…</string>
+
+    <string name="content_folder_title">文件夹</string>
+
+    <string name="settings_title">设置</string>
+    <string name="settings_section_appearance">外观</string>
+    <string name="settings_theme">主题</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_light">亮色</string>
+    <string name="settings_theme_dark">暗色</string>
+    <string name="settings_section_display">显示</string>
+    <string name="settings_view">视图</string>
+    <string name="settings_view_list">列表</string>
+    <string name="settings_view_grid">网格</string>
+    <string name="settings_grid_columns">网格列数（横屏自动 +1）</string>
+    <string name="settings_sort_by">排序</string>
+    <string name="settings_sort_name">名称</string>
+    <string name="settings_sort_modified">时间</string>
+    <string name="settings_sort_size">大小</string>
+    <string name="settings_sort_duration">时长</string>
+    <string name="settings_sort_order">顺序</string>
+    <string name="settings_sort_asc">升序</string>
+    <string name="settings_sort_desc">降序</string>
+    <string name="settings_section_media_types">媒体类型</string>
+    <string name="settings_media_types_hint">长按拖动排序，点 × 隐藏，点下方 chip 恢复</string>
+    <string name="settings_media_types_hidden">已隐藏（点击恢复）</string>
+    <string name="settings_section_playback">播放</string>
+    <string name="settings_music_default_mode">音乐默认播放模式</string>
+    <string name="settings_music_mode_sequence">顺序</string>
+    <string name="settings_music_mode_repeat_one">单曲</string>
+    <string name="settings_music_mode_shuffle">随机</string>
+    <string name="settings_video_default_orientation">视频默认方向</string>
+    <string name="settings_video_orientation_auto">自动</string>
+    <string name="settings_video_orientation_landscape">横屏</string>
+    <string name="settings_video_orientation_portrait">竖屏</string>
+    <string name="settings_video_seek_sensitivity">视频左右滑动快进</string>
+    <string name="settings_video_seek_seconds">%d 秒</string>
+    <string name="settings_video_background">视频后台播放</string>
+    <string name="settings_video_background_pip">画中画</string>
+    <string name="settings_video_background_pause">暂停</string>
+    <string name="settings_section_folders">文件夹</string>
+    <string name="settings_excluded_folders">屏蔽文件夹</string>
+    <string name="settings_excluded_count">%d 项</string>
+    <string name="settings_section_pdf">PDF</string>
+    <string name="settings_pdf_folder">PDF 目录</string>
+    <string name="settings_pdf_folder_none">未选择</string>
+    <string name="settings_pdf_folder_selected">已选择</string>
+    <string name="settings_pdf_default_layout">PDF 默认布局</string>
+    <string name="settings_pdf_layout_vertical">纵向</string>
+    <string name="settings_pdf_layout_horizontal">横向</string>
+
+    <string name="excluded_title">屏蔽文件夹</string>
+    <string name="excluded_desc">选中的目录及其子目录内的媒体将不会显示</string>
+    <string name="excluded_choose">选择目录</string>
+    <string name="excluded_manual">手动输入</string>
+    <string name="excluded_empty_title">暂无屏蔽项</string>
+    <string name="excluded_empty_hint">点右上角图标选择要屏蔽的目录</string>
+    <string name="excluded_manual_title">手动输入路径</string>
+    <string name="excluded_manual_desc">输入文件夹路径的一部分，如 tencent/MicroMsg</string>
+    <string name="excluded_pick_root">请选择一个具体目录，不能是存储根目录</string>
+    <string name="excluded_already">已在屏蔽列表中</string>
+    <string name="excluded_added">已添加：%s</string>
+
+    <string name="music_no_lyrics">暂无歌词</string>
+    <string name="music_play_pause">播放/暂停</string>
+    <string name="music_previous">上一首</string>
+    <string name="music_next">下一首</string>
+    <string name="music_play_mode">循环模式</string>
+
+    <string name="video_speed">倍速</string>
+    <string name="video_loop">循环</string>
+    <string name="video_rotate">旋转</string>
+    <string name="video_play_pause">播放/暂停</string>
+    <string name="video_previous">上一集</string>
+    <string name="video_next">下一集</string>
+
+    <string name="pdf_cannot_open">无法打开该 PDF</string>
+    <string name="pdf_opening">正在打开…</string>
+    <string name="pdf_page">第 %d 页</string>
+    <string name="pdf_rendering">渲染中…</string>
+    <string name="pdf_switch_horizontal">切换横向</string>
+    <string name="pdf_switch_vertical">切换纵向</string>
+
+    <string name="image_page_indicator">%1$d / %2$d</string>
+
+    <string name="mini_bar_play">播放</string>
+    <string name="mini_bar_pause">暂停</string>
+    <string name="mini_bar_close">关闭</string>
+    <string name="error_playback_failed">无法连接播放服务</string>
+</resources>

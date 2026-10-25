@@ -25,7 +25,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.data.model.MediaItem
-import com.grillpoet.mixy.ui.widget.MediaThumbnail
+import com.grillpoet.mixy.ui.common.MediaThumbnail
 
 /**
  * 媒体项网格列表。

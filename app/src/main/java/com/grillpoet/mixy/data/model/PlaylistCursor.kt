@@ -12,7 +12,6 @@ data class PlaylistCursor(
     val hasPrev: Boolean get() = currentIndex > 0
 
     fun next(): PlaylistCursor = if (hasNext) copy(currentIndex = currentIndex + 1) else this
-    fun prev(): PlaylistCursor = if (hasPrev) copy(currentIndex = currentIndex - 1) else this
     fun seek(index: Int): PlaylistCursor =
         if (index in items.indices) copy(currentIndex = index) else this
 }

@@ -12,7 +12,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,6 +55,12 @@ import kotlin.time.Duration.Companion.milliseconds
 
 private val CONTROLS_HIDE_DELAY = 3500L.milliseconds
 
+/**
+ * seek 反馈的最小显示时长。低于这个值，用户感知不到反馈，
+ * 会觉得 seek 没反应。200ms 是经验值，既能感知又不拖沓。
+ */
+private const val MIN_SEEK_FEEDBACK_MS = 200L
+
 /** 构建 PiP 参数。aspect 非法时回退 16:9，比例限制在系统可接受范围。 */
 private fun buildPipParams(aspect: Float): PictureInPictureParams {
     val safe = if (aspect > 0f && aspect.isFinite()) {
@@ -90,6 +99,7 @@ fun VideoPlayerScreen(
     val currentItem = cursor.items.getOrNull(currentIndex) ?: return
 
     val isPlaying by videoVm.isPlaying.collectAsState()
+    val isBuffering by videoVm.isBuffering.collectAsState()
     val position by videoVm.position.collectAsState()
     val duration by videoVm.duration.collectAsState()
 
@@ -103,6 +113,13 @@ fun VideoPlayerScreen(
     var lastInteraction by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     var dragSeekPreview by remember { mutableStateOf<Long?>(null) }
+
+    // seek 动作的独立反馈。区别于 isBuffering：
+    //  - isBuffering 反映播放器状态，短 seek 可能一闪而过甚至不触发
+    //  - seekStartedAt 反映用户动作，保证每次 seek 都有视觉反馈
+    // 最小显示 MIN_SEEK_FEEDBACK_MS，避免闪烁。
+    var seekStartedAt by remember { mutableStateOf<Long?>(null) }
+
     var wasPlayingBeforeBackground by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -187,12 +204,34 @@ fun VideoPlayerScreen(
     }
 
     val interacting = dragSeekPreview != null
-    LaunchedEffect(controlsVisible, lastInteraction, isPlaying, interacting) {
-        if (!controlsVisible || !isPlaying || interacting) return@LaunchedEffect
+    // 拖动中由 DragSeekOverlay 提供反馈，不显示 spinner；
+    // 松手后 seekStartedAt != null 或播放器正在 buffering 都显示。
+    val showSeekSpinner = !interacting &&
+            (seekStartedAt != null || isBuffering)
+
+    LaunchedEffect(controlsVisible, lastInteraction, isPlaying, interacting, showSeekSpinner) {
+        // seek/buffering 期间不自动隐藏控件，方便用户继续调整。
+        if (!controlsVisible || !isPlaying || interacting || showSeekSpinner) {
+            return@LaunchedEffect
+        }
         delay(CONTROLS_HIDE_DELAY)
         if (System.currentTimeMillis() - lastInteraction >= CONTROLS_HIDE_DELAY.inWholeMilliseconds) {
             controlsVisible = false
         }
+    }
+
+    // seek 反馈清除：
+    //  - buffering 期间保持显示（由 isBuffering 接管）
+    //  - buffering 结束后，至少再补到 MIN_SEEK_FEEDBACK_MS
+    //  - 若 seek 未触发 buffering，从 seekStartedAt 起算 200ms 后清除
+    LaunchedEffect(seekStartedAt, isBuffering) {
+        val started = seekStartedAt ?: return@LaunchedEffect
+        if (isBuffering) return@LaunchedEffect
+
+        val elapsed = System.currentTimeMillis() - started
+        val remaining = MIN_SEEK_FEEDBACK_MS - elapsed
+        if (remaining > 0) delay(remaining.milliseconds)
+        seekStartedAt = null
     }
 
     DisposableEffect(Unit) {
@@ -256,6 +295,7 @@ fun VideoPlayerScreen(
             },
             onDragSeekCommit = { target ->
                 videoVm.seekTo(target)
+                seekStartedAt = System.currentTimeMillis()
                 dragSeekPreview = null
                 lastInteraction = System.currentTimeMillis()
             }
@@ -263,6 +303,12 @@ fun VideoPlayerScreen(
 
         dragSeekPreview?.let { preview ->
             DragSeekOverlay(preview = preview, duration = duration)
+        }
+
+        // seek 反馈：用户松手后到真正恢复播放之间的视觉提示。
+        // 拖动手势进行时不显示（DragSeekOverlay 已经有反馈）。
+        if (showSeekSpinner) {
+            BufferingOverlay()
         }
 
         AnimatedVisibility(
@@ -286,6 +332,7 @@ fun VideoPlayerScreen(
                 },
                 onSeek = { ms ->
                     videoVm.seekTo(ms)
+                    seekStartedAt = System.currentTimeMillis()
                     lastInteraction = System.currentTimeMillis()
                 },
                 onSpeedChange = { s ->
@@ -341,6 +388,24 @@ private fun DragSeekOverlay(preview: Long, duration: Long) {
                 text = "${formatDuration(preview)} / ${formatDuration(duration)}",
                 color = Color.White,
                 style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
+}
+
+@Composable
+private fun BufferingOverlay() {
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.55f))
+                .padding(20.dp)
+        ) {
+            CircularProgressIndicator(
+                color = Color.White,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(36.dp)
             )
         }
     }

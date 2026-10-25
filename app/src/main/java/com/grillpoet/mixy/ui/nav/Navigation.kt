@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.nav
+package com.grillpoet.mixy.ui.nav
 
 import androidx.compose.runtime.mutableStateListOf
 

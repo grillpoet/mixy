@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.ui.widget
+package com.grillpoet.mixy.ui.common
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,9 +10,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
-import com.grillpoet.mixy.data.cover.AudioCover
-import com.grillpoet.mixy.data.cover.PdfCover
-import com.grillpoet.mixy.data.cover.VideoCover
+import com.grillpoet.mixy.cover.AudioCover
+import com.grillpoet.mixy.cover.PdfCover
+import com.grillpoet.mixy.cover.VideoCover
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 

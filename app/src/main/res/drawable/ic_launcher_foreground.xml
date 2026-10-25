@@ -3,19 +3,6 @@
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
 
-    <!-- 蓝色圆角方块，中心 (54,54)，边长 64 -->
-    <path
-        android:fillColor="#2563EB"
-        android:pathData="M38,22
-            h32
-            a16,16 0 0 1 16,16
-            v32
-            a16,16 0 0 1 -16,16
-            h-32
-            a16,16 0 0 1 -16,-16
-            v-32
-            a16,16 0 0 1 16,-16 z" />
-
     <!-- 大空心圆环：中心 (54,55)，半径 15，描边 2.5 -->
     <path
         android:fillColor="#00000000"

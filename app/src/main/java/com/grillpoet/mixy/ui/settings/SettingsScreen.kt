@@ -28,15 +28,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.model.PdfLayout
 import com.grillpoet.mixy.data.model.PlayMode
 import com.grillpoet.mixy.data.model.VideoOrientation
-import com.grillpoet.mixy.nav.Screen
-import com.grillpoet.mixy.ui.widget.EditableChips
-import com.grillpoet.mixy.ui.widget.MixyTopBar
+import com.grillpoet.mixy.ui.common.EditableChips
+import com.grillpoet.mixy.ui.common.MixyTopBar
+import com.grillpoet.mixy.ui.common.labelRes
+import com.grillpoet.mixy.ui.nav.Screen
 
 @Composable
 fun SettingsScreen(
@@ -66,7 +69,10 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        MixyTopBar(title = "设置", onBack = onBack)
+        MixyTopBar(
+            title = stringResource(R.string.settings_title),
+            onBack = onBack
+        )
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -74,13 +80,13 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             item {
-                SectionHeader("外观")
+                SectionHeader(stringResource(R.string.settings_section_appearance))
                 ChoiceGroup(
-                    title = "主题",
+                    title = stringResource(R.string.settings_theme),
                     options = listOf(
-                        "system" to "跟随系统",
-                        "light" to "亮色",
-                        "dark" to "暗色"
+                        "system" to stringResource(R.string.settings_theme_system),
+                        "light" to stringResource(R.string.settings_theme_light),
+                        "dark" to stringResource(R.string.settings_theme_dark)
                     ),
                     current = settings.theme,
                     onSelect = { v ->
@@ -91,9 +97,33 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(16.dp))
-                SectionHeader("媒体类型")
+                SectionHeader(stringResource(R.string.settings_section_display))
+                DisplaySettingsContent(
+                    view = settings.viewMode,
+                    gridColumns = settings.gridColumns,
+                    sortMode = settings.sortMode,
+                    sortOrder = settings.sortOrder,
+                    onView = { v ->
+                        container.settingsStore.update { it.copy(viewMode = v) }
+                    },
+                    onGridColumns = { n ->
+                        container.settingsStore.update { it.copy(gridColumns = n) }
+                    },
+                    onSortMode = { m ->
+                        container.settingsStore.update { it.copy(sortMode = m) }
+                    },
+                    onSortOrder = { o ->
+                        container.settingsStore.update { it.copy(sortOrder = o) }
+                    },
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+
+            item {
+                Spacer(Modifier.height(16.dp))
+                SectionHeader(stringResource(R.string.settings_section_media_types))
                 Text(
-                    text = "长按拖动排序，点 × 隐藏，点下方 chip 恢复",
+                    text = stringResource(R.string.settings_media_types_hint),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
@@ -125,14 +155,12 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(16.dp))
-                SectionHeader("播放")
+                SectionHeader(stringResource(R.string.settings_section_playback))
                 ChoiceGroup(
-                    title = "音乐默认播放模式",
-                    options = listOf(
-                        PlayMode.SEQUENCE to "顺序",
-                        PlayMode.REPEAT_ONE to "单曲",
-                        PlayMode.SHUFFLE to "随机"
-                    ),
+                    title = stringResource(R.string.settings_music_default_mode),
+                    options = PlayMode.entries.map {
+                        it to stringResource(it.labelRes)
+                    },
                     current = settings.musicDefaultPlayMode,
                     onSelect = { v ->
                         container.settingsStore.update { it.copy(musicDefaultPlayMode = v) }
@@ -140,12 +168,10 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 ChoiceGroup(
-                    title = "视频默认方向",
-                    options = listOf(
-                        VideoOrientation.AUTO to "自动",
-                        VideoOrientation.LANDSCAPE to "横屏",
-                        VideoOrientation.PORTRAIT to "竖屏"
-                    ),
+                    title = stringResource(R.string.settings_video_default_orientation),
+                    options = VideoOrientation.entries.map {
+                        it to stringResource(it.labelRes)
+                    },
                     current = settings.videoDefaultOrientation,
                     onSelect = { v ->
                         container.settingsStore.update { it.copy(videoDefaultOrientation = v) }
@@ -153,13 +179,10 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 ChoiceGroup(
-                    title = "视频左右滑动快进",
-                    options = listOf(
-                        30 to "30 秒",
-                        60 to "60 秒",
-                        90 to "90 秒",
-                        120 to "120 秒"
-                    ),
+                    title = stringResource(R.string.settings_video_seek_sensitivity),
+                    options = listOf(30, 60, 90, 120).map {
+                        it to stringResource(R.string.settings_video_seek_seconds, it)
+                    },
                     current = settings.videoSeekSeconds,
                     onSelect = { v ->
                         container.settingsStore.update { it.copy(videoSeekSeconds = v) }
@@ -167,10 +190,10 @@ fun SettingsScreen(
                 )
                 Spacer(Modifier.height(8.dp))
                 ChoiceGroup(
-                    title = "视频后台播放",
+                    title = stringResource(R.string.settings_video_background),
                     options = listOf(
-                        "PIP" to "画中画",
-                        "PAUSE" to "暂停"
+                        "PIP" to stringResource(R.string.settings_video_background_pip),
+                        "PAUSE" to stringResource(R.string.settings_video_background_pause)
                     ),
                     current = settings.videoBackground,
                     onSelect = { v ->
@@ -181,7 +204,7 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(16.dp))
-                SectionHeader("文件夹")
+                SectionHeader(stringResource(R.string.settings_section_folders))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -192,12 +215,15 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "屏蔽文件夹",
+                        text = stringResource(R.string.settings_excluded_folders),
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = "${settings.excludedPaths.size} 项",
+                        text = stringResource(
+                            R.string.settings_excluded_count,
+                            settings.excludedPaths.size
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -206,7 +232,7 @@ fun SettingsScreen(
 
             item {
                 Spacer(Modifier.height(16.dp))
-                SectionHeader("PDF")
+                SectionHeader(stringResource(R.string.settings_section_pdf))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -217,23 +243,26 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "PDF 目录",
+                        text = stringResource(R.string.settings_pdf_folder),
                         style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = if (settings.pdfTreeUri == null) "未选择" else "已选择",
+                        text = stringResource(
+                            if (settings.pdfTreeUri == null)
+                                R.string.settings_pdf_folder_none
+                            else R.string.settings_pdf_folder_selected
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(Modifier.height(8.dp))
                 ChoiceGroup(
-                    title = "PDF 默认布局",
-                    options = listOf(
-                        PdfLayout.VERTICAL to "纵向",
-                        PdfLayout.HORIZONTAL to "横向"
-                    ),
+                    title = stringResource(R.string.settings_pdf_default_layout),
+                    options = PdfLayout.entries.map {
+                        it to stringResource(it.labelRes)
+                    },
                     current = settings.pdfDefaultLayout,
                     onSelect = { v ->
                         container.settingsStore.update { it.copy(pdfDefaultLayout = v) }

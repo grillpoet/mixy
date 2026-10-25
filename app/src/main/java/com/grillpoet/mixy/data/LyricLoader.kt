@@ -3,6 +3,7 @@ package com.grillpoet.mixy.data
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import android.util.LruCache
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -12,14 +13,26 @@ data class LyricLine(val timestamp: Long, val text: String)
 object LyricLoader {
 
     /**
-     * 只读同目录同名 .lrc 文件。
-     * 内嵌标签（ID3 USLT / FLAC LYRICS / M4A ©lyr）需要第三方库，不引。
+     * 内存缓存。同一首歌来回切换时命中，避免重复 IO + 解析。
+     * 20 条足够覆盖普通播放列表的滚动窗口。
+     * 空结果也缓存——没有 .lrc 的歌反复切也不必反复查文件系统。
+     *
+     * 不做主动清理：LruCache 自然淘汰；用户删除 .lrc 后进程存活期间仍显示旧歌词，
+     * 重启 App 即恢复。引入「媒体变化监听 → 清缓存」的复杂度不值得。
      */
-    suspend fun load(context: Context, uri: Uri): List<LyricLine> =
-        withContext(Dispatchers.IO) {
+    private val cache = LruCache<String, List<LyricLine>>(20)
+
+    suspend fun load(context: Context, uri: Uri): List<LyricLine> {
+        val key = uri.toString()
+        cache.get(key)?.let { return it }
+
+        val result = withContext(Dispatchers.IO) {
             val text = readSidecarLrc(context, uri)
             if (text.isBlank()) emptyList() else parseLrc(text)
         }
+        cache.put(key, result)
+        return result
+    }
 
     private fun readSidecarLrc(context: Context, uri: Uri): String {
         val path = resolveDataPath(context, uri) ?: return ""
@@ -29,7 +42,6 @@ object LyricLoader {
 
         val gbk = runCatching { java.nio.charset.Charset.forName("GBK") }.getOrNull()
 
-        // 先试 UTF-8，失败再试 GBK
         val utf8Text = runCatching { lrcFile.readText(Charsets.UTF_8) }.getOrDefault("")
         if (utf8Text.isNotBlank() && !utf8Text.contains('\uFFFD')) return utf8Text
 

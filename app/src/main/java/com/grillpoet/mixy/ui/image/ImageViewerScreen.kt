@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -41,6 +42,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.model.PlaylistCursor
 
 @Composable
@@ -96,13 +98,15 @@ fun ImageViewerScreen(
             onClick = onBack,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(8.dp)
+                // AppRoot 已做 statusBarsPadding，这里再留 4dp，
+                // 避免按钮紧贴状态栏。
+                .padding(start = 12.dp, top = 4.dp)
                 .clip(CircleShape)
                 .background(Color.Black.copy(alpha = 0.4f))
         ) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "返回",
+                contentDescription = stringResource(R.string.action_back),
                 tint = Color.White
             )
         }
@@ -117,7 +121,11 @@ fun ImageViewerScreen(
                 .padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
             Text(
-                text = "${pagerState.currentPage + 1} / ${cursor.items.size}",
+                text = stringResource(
+                    R.string.image_page_indicator,
+                    pagerState.currentPage + 1,
+                    cursor.items.size
+                ),
                 color = Color.White,
                 style = MaterialTheme.typography.labelMedium
             )

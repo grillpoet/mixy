@@ -21,8 +21,8 @@ import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.ExternalUriResolver
 import com.grillpoet.mixy.data.model.MediaType
-import com.grillpoet.mixy.nav.Navigator
-import com.grillpoet.mixy.nav.Screen
+import com.grillpoet.mixy.ui.nav.Navigator
+import com.grillpoet.mixy.ui.nav.Screen
 import com.grillpoet.mixy.ui.folder.FolderContentScreen
 import com.grillpoet.mixy.ui.folder.FolderListScreen
 import com.grillpoet.mixy.ui.image.ImageViewerScreen

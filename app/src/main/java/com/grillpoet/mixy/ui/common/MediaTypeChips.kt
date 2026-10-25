@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.ui.widget
+package com.grillpoet.mixy.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.data.model.MediaType
+import com.grillpoet.mixy.ui.common.label
 
 /**
  * 主界面的媒体类型切换 chips。
@@ -52,7 +53,7 @@ fun MediaTypeChips(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = type.label,
+                    text = type.label(),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (selected) MaterialTheme.colorScheme.onPrimary

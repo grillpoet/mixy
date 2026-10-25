@@ -13,6 +13,7 @@ import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.data.model.SortSpec
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,15 +27,28 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.milliseconds
 
+/**
+ * 文件夹加载错误。UI 层据此选择本地化文案。
+ */
+enum class FolderError {
+    LOAD_FAILED,
+}
+
 data class FolderUiState(
     val currentType: MediaType = MediaType.MUSIC,
     val visibleChips: List<MediaType> = listOf(MediaType.MUSIC),
     val folders: List<MediaFolder> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<MediaItem> = emptyList(),
+    /** 首次加载 / 切换类型。由骨架屏消费。 */
     val isLoading: Boolean = true,
+    /** 已有数据时的下拉刷新。由 PullToRefreshBox 消费。 */
+    val isRefreshing: Boolean = false,
     val skeletonVisible: Boolean = true,
-    val scanProgress: Int? = null
+    val scanProgress: Int? = null,
+    val error: FolderError? = null,
+    /** 原始异常信息，开发者向，UI 可选展示为小字。 */
+    val errorDetail: String? = null
 ) {
     val isSearching: Boolean get() = searchQuery.isNotBlank()
 }
@@ -54,14 +68,10 @@ class FolderViewModel(
 
     init {
         viewModelScope.launch {
-            // 冷启动必须先等 DataStore 恢复，否则首次 load 用默认设置
-            // （排除路径、PDF 目录都不对）。
             settings.awaitLoaded()
             currentSettings = settings.flow.value
 
             launch {
-                // 搜索输入去抖后作为第三路流参与 combine，
-                // 让 searchResults 只有一个写入源。
                 val queryFlow = _state
                     .map { it.searchQuery }
                     .distinctUntilChanged()
@@ -123,8 +133,12 @@ class FolderViewModel(
                 folders = sortedFolders,
                 searchResults = newSearchResults,
                 isLoading = false,
+                isRefreshing = false,
                 skeletonVisible = !hasData,
-                scanProgress = null
+                scanProgress = null,
+                // 有数据说明加载成功，清掉历史错误。
+                error = if (hasData) null else it.error,
+                errorDetail = if (hasData) null else it.errorDetail
             )
         }
 
@@ -140,25 +154,31 @@ class FolderViewModel(
                 searchQuery = "",
                 searchResults = emptyList(),
                 isLoading = true,
+                isRefreshing = false,
                 skeletonVisible = true,
-                scanProgress = null
+                scanProgress = null,
+                error = null,
+                errorDetail = null
             )
         }
         load(type)
     }
 
     fun refresh() {
+        val hasData = _state.value.folders.isNotEmpty()
         _state.update {
             it.copy(
-                isLoading = true,
-                skeletonVisible = it.folders.isEmpty(),
-                scanProgress = null
+                isLoading = !hasData,
+                isRefreshing = hasData,
+                skeletonVisible = !hasData,
+                scanProgress = null,
+                error = null,
+                errorDetail = null
             )
         }
         load(_state.value.currentType, forceRefresh = true)
     }
 
-    /** 只更新输入框显示值。搜索结果由 combine 在 200ms 去抖后派生。 */
     fun updateSearch(q: String) {
         _state.update { it.copy(searchQuery = q) }
     }
@@ -197,29 +217,46 @@ class FolderViewModel(
                 _state.update { it.copy(scanProgress = 0) }
             }
 
-            repo.load(
-                type = type,
-                forceRefresh = forceRefresh,
-                excludedPaths = excluded,
-                pdfTreeUri = pdfUri,
-                onScanProgress = onProgress
-            )
-
-            if (loadGeneration != generation) return@launch
-
-            // 兜底写入排序后的结果，避免 combine 因 StateFlow equals 去重
-            // 未触发时留下未排序数据。
-            val list = repo.folders.value[type].orEmpty()
-            val sorted = MediaSorter.sortFolders(
-                list, SortSpec(currentSettings.sortMode, currentSettings.sortOrder)
-            )
-            _state.update {
-                it.copy(
-                    folders = sorted,
-                    isLoading = false,
-                    skeletonVisible = false,
-                    scanProgress = null
+            try {
+                repo.load(
+                    type = type,
+                    forceRefresh = forceRefresh,
+                    excludedPaths = excluded,
+                    pdfTreeUri = pdfUri,
+                    onScanProgress = onProgress
                 )
+                if (loadGeneration != generation) return@launch
+
+                val list = repo.folders.value[type].orEmpty()
+                val sorted = MediaSorter.sortFolders(
+                    list,
+                    SortSpec(currentSettings.sortMode, currentSettings.sortOrder)
+                )
+                _state.update {
+                    it.copy(
+                        folders = sorted,
+                        isLoading = false,
+                        isRefreshing = false,
+                        skeletonVisible = false,
+                        scanProgress = null,
+                        error = null,
+                        errorDetail = null
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (loadGeneration != generation) return@launch
+                _state.update {
+                    it.copy(
+                        isLoading = false,
+                        isRefreshing = false,
+                        skeletonVisible = false,
+                        scanProgress = null,
+                        error = FolderError.LOAD_FAILED,
+                        errorDetail = e.message
+                    )
+                }
             }
         }
     }

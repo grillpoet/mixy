@@ -4,6 +4,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import androidx.core.net.toUri
 import com.grillpoet.mixy.data.model.MediaFolder
@@ -56,6 +57,31 @@ class MediaStoreDataSource(private val context: Context) {
         }
     }
 
+    /**
+     * 基础过滤：排除回收站项（Android 11+）和正在写入项。
+     * 已删除项出现在列表里点开会失败，正在写入的缩略图加载失败。
+     */
+    private fun baseSelection(): String {
+        val parts = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            parts += "${MediaStore.MediaColumns.IS_TRASHED} = 0"
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            parts += "${MediaStore.MediaColumns.IS_PENDING} = 0"
+        }
+        return parts.joinToString(" AND ")
+    }
+
+    /** 拼接用户已有 selection 与基础过滤。 */
+    private fun combineSelection(user: String?): String? {
+        val base = baseSelection()
+        return when {
+            user.isNullOrBlank() -> base.ifBlank { null }
+            base.isBlank() -> user
+            else -> "($user) AND ($base)"
+        }
+    }
+
     private fun queryAudio(): List<MediaItem> {
         val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         val proj = arrayOf(
@@ -69,7 +95,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Audio.Media.DATA
         )
         val sel = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        return query(uri, proj, sel) { c ->
+        return query(uri, proj, combineSelection(sel)) { c ->
             val data = c.getString(7) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(
@@ -98,7 +124,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Images.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Images.Media.DATA
         )
-        return query(uri, proj, null) { c ->
+        return query(uri, proj, combineSelection(null)) { c ->
             val data = c.getString(6) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(
@@ -127,7 +153,7 @@ class MediaStoreDataSource(private val context: Context) {
             MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
             MediaStore.Video.Media.DATA
         )
-        return query(uri, proj, null) { c ->
+        return query(uri, proj, combineSelection(null)) { c ->
             val data = c.getString(7) ?: ""
             val folderPath = data.substringBeforeLast('/', "")
             MediaItem(

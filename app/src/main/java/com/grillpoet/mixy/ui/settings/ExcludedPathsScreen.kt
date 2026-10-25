@@ -41,10 +41,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.grillpoet.mixy.AppContainer
-import com.grillpoet.mixy.ui.widget.MixyTopBar
+import com.grillpoet.mixy.R
+import com.grillpoet.mixy.ui.common.MixyTopBar
 
 @Composable
 fun ExcludedPathsScreen(
@@ -65,14 +67,14 @@ fun ExcludedPathsScreen(
                 fragment.isNullOrBlank() -> {
                     Toast.makeText(
                         context,
-                        "请选择一个具体目录，不能是存储根目录",
+                        context.getString(R.string.excluded_pick_root),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
                 fragment in settings.excludedPaths -> {
                     Toast.makeText(
                         context,
-                        "已在屏蔽列表中",
+                        context.getString(R.string.excluded_already),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -82,7 +84,7 @@ fun ExcludedPathsScreen(
                     }
                     Toast.makeText(
                         context,
-                        "已添加：$fragment",
+                        context.getString(R.string.excluded_added, fragment),
                         Toast.LENGTH_SHORT
                     ).show()
                 }
@@ -96,20 +98,26 @@ fun ExcludedPathsScreen(
             .background(MaterialTheme.colorScheme.background)
     ) {
         MixyTopBar(
-            title = "屏蔽文件夹",
+            title = stringResource(R.string.excluded_title),
             onBack = onBack,
             actions = {
                 IconButton(onClick = { treeLauncher.launch(null) }) {
-                    Icon(Icons.Filled.CreateNewFolder, "选择目录")
+                    Icon(
+                        Icons.Filled.CreateNewFolder,
+                        stringResource(R.string.excluded_choose)
+                    )
                 }
                 IconButton(onClick = { showManualDialog = true }) {
-                    Icon(Icons.Filled.Edit, "手动输入")
+                    Icon(
+                        Icons.Filled.Edit,
+                        stringResource(R.string.excluded_manual)
+                    )
                 }
             }
         )
 
         Text(
-            text = "选中的目录及其子目录内的媒体将不会显示",
+            text = stringResource(R.string.excluded_desc),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
@@ -130,13 +138,13 @@ fun ExcludedPathsScreen(
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                "暂无屏蔽项",
+                                stringResource(R.string.excluded_empty_title),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "点右上角图标选择要屏蔽的目录",
+                                stringResource(R.string.excluded_empty_hint),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -171,7 +179,8 @@ fun ExcludedPathsScreen(
                             }
                         }) {
                             Icon(
-                                Icons.Filled.Delete, "删除",
+                                Icons.Filled.Delete,
+                                stringResource(R.string.action_delete),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
@@ -208,11 +217,11 @@ private fun AddPathDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("手动输入路径") },
+        title = { Text(stringResource(R.string.excluded_manual_title)) },
         text = {
             Column {
                 Text(
-                    "输入文件夹路径的一部分，如 tencent/MicroMsg",
+                    stringResource(R.string.excluded_manual_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -238,10 +247,14 @@ private fun AddPathDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(input) }) { Text("添加") }
+            TextButton(onClick = { onConfirm(input) }) {
+                Text(stringResource(R.string.action_add))
+            }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.action_cancel))
+            }
         }
     )
 }

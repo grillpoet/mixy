@@ -1,7 +1,12 @@
 package com.grillpoet.mixy.ui.folder
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,15 +30,17 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -47,7 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,19 +66,21 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.PermissionHelper
 import com.grillpoet.mixy.data.model.MediaFolder
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.ViewMode
-import com.grillpoet.mixy.nav.Screen
-import com.grillpoet.mixy.ui.settings.ViewSettingsSheet
-import com.grillpoet.mixy.ui.widget.MediaThumbnail
-import com.grillpoet.mixy.ui.widget.MediaTypeChips
-import com.grillpoet.mixy.ui.widget.MixyTopBar
+import com.grillpoet.mixy.ui.common.CenteredMessage
+import com.grillpoet.mixy.ui.common.MediaThumbnail
+import com.grillpoet.mixy.ui.common.MediaTypeChips
+import com.grillpoet.mixy.ui.nav.Screen
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
     container: AppContainer,
@@ -80,15 +91,21 @@ fun FolderListScreen(
     val settings by container.settingsStore.flow.collectAsState()
     val context = LocalContext.current
 
-    var showViewSettings by remember { mutableStateOf(false) }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.screenWidthDp > configuration.screenHeightDp
+    val effectiveColumns = if (isLandscape) {
+        (settings.gridColumns + 1).coerceAtMost(5)
+    } else {
+        settings.gridColumns
+    }
 
-    // 权限按当前媒体类型判断。PDF 走 SAF，不需要媒体权限（恒为 true）。
     var permissionTick by remember { mutableIntStateOf(0) }
     val hasPermission = remember(state.currentType, permissionTick) {
         PermissionHelper.hasForType(context, state.currentType)
     }
 
-    // 从系统设置返回时刷新权限状态
+    var permissionRequested by remember { mutableStateOf(false) }
+
     val permissionLifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(permissionLifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -103,6 +120,7 @@ fun FolderListScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
+        permissionRequested = true
         permissionTick++
         if (PermissionHelper.hasForType(context, state.currentType)) {
             vm.refresh()
@@ -117,7 +135,6 @@ fun FolderListScreen(
         }
     }
 
-    // 只在「权限从无到有」时刷新
     var lastGranted by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(hasPermission) {
         if (lastGranted == false && hasPermission) {
@@ -131,54 +148,81 @@ fun FolderListScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // ==================== 顶部栏 ====================
-        MixyTopBar(
-            title = "Mixy",
-            actions = {
-                IconButton(onClick = { vm.refresh() }) {
-                    Icon(Icons.Filled.Refresh, contentDescription = "刷新")
-                }
-                IconButton(onClick = { showViewSettings = true }) {
-                    Icon(Icons.Filled.Tune, contentDescription = "视图设置")
-                }
-                IconButton(onClick = { onNavigate(Screen.Settings) }) {
-                    Icon(Icons.Filled.Settings, contentDescription = "设置")
-                }
-            }
-        )
-
-        // 搜索栏
-        SearchBar(
-            value = state.searchQuery,
-            onValueChange = vm::updateSearch,
-            modifier = Modifier
+        Row(
+            Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 4.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SearchBar(
+                value = state.searchQuery,
+                onValueChange = vm::updateSearch,
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(Modifier.width(4.dp))
+            IconButton(onClick = { onNavigate(Screen.Settings) }) {
+                Icon(
+                    Icons.Filled.Settings,
+                    contentDescription = stringResource(R.string.action_settings),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(
+            thickness = 0.5.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
         )
 
-        // 媒体类型 chips
         MediaTypeChips(
             visibleTypes = state.visibleChips,
             current = state.currentType,
             onSelect = vm::selectType,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
         )
 
         Spacer(Modifier.height(4.dp))
 
-        // ==================== 内容区 ====================
         Box(Modifier.fillMaxSize()) {
             when {
-                !hasPermission -> PermissionGuide(
-                    onRequest = {
-                        val perms = PermissionHelper.forType(state.currentType) +
-                                PermissionHelper.notificationPermissions()
-                        if (perms.isNotEmpty()) permissionLauncher.launch(perms)
+                !hasPermission -> CenteredMessage(
+                    title = stringResource(R.string.permission_title),
+                    description = stringResource(
+                        if (permissionRequested) R.string.permission_denied
+                        else R.string.permission_desc
+                    ),
+                    actionText = stringResource(
+                        if (permissionRequested) R.string.permission_open_settings
+                        else R.string.permission_grant
+                    ),
+                    onAction = {
+                        if (permissionRequested) {
+                            val intent = Intent(
+                                AndroidSettings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.fromParts("package", context.packageName, null)
+                            )
+                            context.startActivity(intent)
+                        } else {
+                            val perms = PermissionHelper.forType(state.currentType) +
+                                    PermissionHelper.notificationPermissions()
+                            if (perms.isNotEmpty()) permissionLauncher.launch(perms)
+                        }
                     }
                 )
 
+                state.error != null -> CenteredMessage(
+                    title = stringResource(R.string.error_load_failed),
+                    description = state.errorDetail,
+                    actionText = stringResource(R.string.action_retry),
+                    onAction = { vm.refresh() }
+                )
                 state.currentType == MediaType.PDF && settings.pdfTreeUri == null ->
-                    PdfDirectoryGuide(onRequest = { pdfLauncher.launch(null) })
+                    CenteredMessage(
+                        title = stringResource(R.string.pdf_folder_title),
+                        description = stringResource(R.string.pdf_folder_desc),
+                        actionText = stringResource(R.string.pdf_folder_choose),
+                        onAction = { pdfLauncher.launch(null) }
+                    )
 
                 state.currentType == MediaType.PDF && state.scanProgress != null ->
                     ScanProgress(state.scanProgress!!)
@@ -188,7 +232,7 @@ fun FolderListScreen(
                 state.isSearching -> SearchResultList(
                     items = state.searchResults,
                     gridMode = settings.viewMode == ViewMode.GRID,
-                    gridColumns = settings.gridColumns,
+                    gridColumns = effectiveColumns,
                     onItemClick = { index ->
                         if (state.searchResults.isNotEmpty()) {
                             val cursor = PlaylistCursor(
@@ -208,30 +252,25 @@ fun FolderListScreen(
                     }
                 )
 
-                state.folders.isEmpty() -> EmptyState()
-
-                else -> FolderList(
-                    folders = state.folders,
-                    gridMode = settings.viewMode == ViewMode.GRID,
-                    gridColumns = settings.gridColumns,
-                    onNavigate = onNavigate
+                state.folders.isEmpty() -> CenteredMessage(
+                    title = stringResource(R.string.folder_empty_title),
+                    description = stringResource(R.string.folder_empty_desc)
                 )
+
+                else -> PullToRefreshBox(
+                    isRefreshing = state.isRefreshing,
+                    onRefresh = vm::refresh,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    FolderList(
+                        folders = state.folders,
+                        gridMode = settings.viewMode == ViewMode.GRID,
+                        gridColumns = effectiveColumns,
+                        onNavigate = onNavigate
+                    )
+                }
             }
         }
-    }
-
-    if (showViewSettings) {
-        ViewSettingsSheet(
-            view = settings.viewMode,
-            gridColumns = settings.gridColumns,
-            sortMode = settings.sortMode,
-            sortOrder = settings.sortOrder,
-            onView = { v -> container.settingsStore.update { it.copy(viewMode = v) } },
-            onGridColumns = { n -> container.settingsStore.update { it.copy(gridColumns = n) } },
-            onSortMode = { m -> container.settingsStore.update { it.copy(sortMode = m) } },
-            onSortOrder = { o -> container.settingsStore.update { it.copy(sortOrder = o) } },
-            onDismiss = { showViewSettings = false }
-        )
     }
 }
 
@@ -251,7 +290,8 @@ private fun SearchBar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
-            Icons.Filled.Search, null,
+            Icons.Filled.Search,
+            contentDescription = stringResource(R.string.action_search),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(20.dp)
         )
@@ -259,7 +299,7 @@ private fun SearchBar(
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) {
                 Text(
-                    "搜索",
+                    stringResource(R.string.search_hint),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium
                 )
@@ -272,7 +312,19 @@ private fun SearchBar(
                     color = MaterialTheme.colorScheme.onSurface
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = if (value.isNotEmpty()) 24.dp else 0.dp)
+            )
+        }
+        if (value.isNotEmpty()) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.action_clear),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(20.dp)
+                    .clickable { onValueChange("") }
             )
         }
     }
@@ -301,7 +353,9 @@ private fun FolderList(
             ) { _, folder ->
                 FolderCardGrid(
                     folder = folder,
-                    onClick = { onNavigate(Screen.FolderContent(folder.type, folder.folderPath)) }
+                    onClick = {
+                        onNavigate(Screen.FolderContent(folder.type, folder.folderPath))
+                    }
                 )
             }
         }
@@ -314,7 +368,9 @@ private fun FolderList(
             items(folders, key = { it.folderPath }) { folder ->
                 FolderCard(
                     folder = folder,
-                    onClick = { onNavigate(Screen.FolderContent(folder.type, folder.folderPath)) }
+                    onClick = {
+                        onNavigate(Screen.FolderContent(folder.type, folder.folderPath))
+                    }
                 )
             }
         }
@@ -363,17 +419,16 @@ private fun FolderCard(
             )
             Spacer(Modifier.height(2.dp))
             Text(
-                text = "${folder.items.size} 项 · ${folder.folderPath}",
+                text = stringResource(
+                    R.string.folder_item_count,
+                    folder.items.size
+                ),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
 }
-
-// ==================== 网格卡片 ====================
 
 @Composable
 private fun FolderCardGrid(
@@ -415,7 +470,10 @@ private fun FolderCardGrid(
         )
         Spacer(Modifier.height(2.dp))
         Text(
-            text = "${folder.items.size} 项",
+            text = stringResource(
+                R.string.folder_item_count,
+                folder.items.size
+            ),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -433,7 +491,10 @@ private fun SearchResultList(
 ) {
     if (items.isEmpty()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("无结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                stringResource(R.string.search_no_results),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         return
     }
@@ -450,10 +511,7 @@ private fun SearchResultList(
                 items = items,
                 key = { _, item -> item.uri.toString() }
             ) { index, item ->
-                SearchResultGridCell(
-                    item = item,
-                    onClick = { onItemClick(index) }
-                )
+                SearchResultGridCell(item = item, onClick = { onItemClick(index) })
             }
         }
     } else {
@@ -550,7 +608,6 @@ private fun SearchResultGridCell(
                 .fillMaxWidth()
                 .padding(horizontal = 2.dp)
         )
-
         Spacer(Modifier.height(2.dp))
     }
 }
@@ -611,7 +668,7 @@ private fun ScanProgress(count: Int) {
             CircularProgressIndicator()
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "已扫描 $count 个 PDF…",
+                text = stringResource(R.string.pdf_scanning, count),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -619,84 +676,7 @@ private fun ScanProgress(count: Int) {
     }
 }
 
-// ==================== 空状态 ====================
-
-@Composable
-private fun EmptyState() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("暂无文件夹", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "该类型下没有找到媒体",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-// ==================== 权限引导 ====================
-
-@Composable
-private fun PermissionGuide(onRequest: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Text("需要媒体权限", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Mixy 需要读取媒体文件才能展示内容",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(16.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable(onClick = onRequest)
-                    .padding(horizontal = 24.dp, vertical = 10.dp)
-            ) {
-                Text("授予权限", color = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
-    }
-}
-
-// ==================== PDF 目录引导 ====================
-
-@Composable
-private fun PdfDirectoryGuide(onRequest: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(32.dp)
-        ) {
-            Text("选择 PDF 目录", style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "Android 系统不索引 PDF，请选择一个包含 PDF 的目录",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(16.dp))
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(20.dp))
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable(onClick = onRequest)
-                    .padding(horizontal = 24.dp, vertical = 10.dp)
-            ) {
-                Text("选择目录", color = MaterialTheme.colorScheme.onPrimary)
-            }
-        }
-    }
-}
+// ==================== 封面占位 ====================
 
 @Composable
 private fun EmptyCoverFallback(

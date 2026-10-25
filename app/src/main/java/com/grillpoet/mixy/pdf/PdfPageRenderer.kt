@@ -1,4 +1,4 @@
-package com.grillpoet.mixy.data.pdf
+package com.grillpoet.mixy.pdf
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import androidx.core.graphics.createBitmap
+import kotlinx.coroutines.CancellationException
 
 class PdfPageRenderer private constructor(
     private val tempFile: File?,
@@ -71,7 +72,7 @@ class PdfPageRenderer private constructor(
             try {
                 val pfd = context.contentResolver
                     .openFileDescriptor(uri, "r")
-                    ?: error("openFileDescriptor 返回 null")
+                    ?: error("openFileDescriptor returned null")
                 try {
                     val renderer = PdfRenderer(pfd)
                     renderer.pageCount
@@ -80,9 +81,9 @@ class PdfPageRenderer private constructor(
                     )
                 } catch (e: Exception) {
                     runCatching { pfd.close() }
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (e is CancellationException) throw e
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
             }
@@ -94,7 +95,7 @@ class PdfPageRenderer private constructor(
             try {
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     temp.outputStream().use { input.copyTo(it) }
-                } ?: error("无法打开输入流")
+                } ?: error("Unable to open input stream")
 
                 val pfd = ParcelFileDescriptor.open(
                     temp,
@@ -107,10 +108,10 @@ class PdfPageRenderer private constructor(
                 } catch (e: Exception) {
                     runCatching { pfd.close() }
                     runCatching { temp.delete() }
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    if (e is CancellationException) throw e
                     Result.failure(e)
                 }
-            } catch (e: kotlinx.coroutines.CancellationException) {
+            } catch (e: CancellationException) {
                 runCatching { temp.delete() }
                 throw e
             } catch (e: Exception) {

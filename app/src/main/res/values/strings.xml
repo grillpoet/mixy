@@ -1,3 +1,150 @@
 <resources>
     <string name="app_name">Mixy</string>
+
+    <!-- 通用动作 -->
+    <string name="action_back">Back</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_search">Search</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_add">Add</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_close">Close</string>
+    <string name="action_hide">Hide</string>
+    <string name="action_drag_to_reorder">Drag to reorder</string>
+    <string name="action_view_settings">View settings</string>
+
+    <!-- 媒体类型 -->
+    <string name="media_type_music">Music</string>
+    <string name="media_type_image">Images</string>
+    <string name="media_type_video">Videos</string>
+    <string name="media_type_pdf">PDF</string>
+
+    <!-- 文件夹列表页 -->
+    <string name="folder_empty_title">No folders yet</string>
+    <string name="folder_empty_desc">No media found for this type</string>
+    <string name="folder_not_found">Folder doesn\'t exist or was removed</string>
+    <string name="folder_not_found_hint">Go back and refresh the list</string>
+    <string name="folder_fallback_name">External</string>
+    <string name="folder_item_count">%d items</string>
+    <string name="folder_subtitle">%1$d items · %2$s</string>
+
+    <!-- 权限 -->
+    <string name="permission_title">Media permission required</string>
+    <string name="permission_desc">Mixy needs access to your media to display content</string>
+    <string name="permission_denied">Permission denied. Enable it in system settings; Mixy will refresh when you return.</string>
+    <string name="permission_grant">Grant permission</string>
+    <string name="permission_open_settings">Open settings</string>
+
+    <!-- 错误 -->
+    <string name="error_load_failed">Failed to load</string>
+
+    <!-- 搜索 -->
+    <string name="search_hint">Search</string>
+    <string name="search_no_results">No results</string>
+
+    <!-- PDF 目录 -->
+    <string name="pdf_folder_title">Choose PDF folder</string>
+    <string name="pdf_folder_desc">Android doesn\'t index PDFs. Choose a folder containing PDFs.</string>
+    <string name="pdf_folder_choose">Choose folder</string>
+    <string name="pdf_scanning">Scanned %d PDFs…</string>
+
+    <!-- 内容页 -->
+    <string name="content_folder_title">Folder</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_section_appearance">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_system">System default</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_section_display">Display</string>
+    <string name="settings_view">View</string>
+    <string name="settings_view_list">List</string>
+    <string name="settings_view_grid">Grid</string>
+    <string name="settings_grid_columns">Grid columns (auto +1 in landscape)</string>
+    <string name="settings_sort_by">Sort by</string>
+    <string name="settings_sort_name">Name</string>
+    <string name="settings_sort_modified">Modified</string>
+    <string name="settings_sort_size">Size</string>
+    <string name="settings_sort_duration">Duration</string>
+    <string name="settings_sort_order">Order</string>
+    <string name="settings_sort_asc">Ascending</string>
+    <string name="settings_sort_desc">Descending</string>
+    <string name="settings_section_media_types">Media types</string>
+    <string name="settings_media_types_hint">Drag to reorder, tap × to hide, tap a hidden chip to restore</string>
+    <string name="settings_media_types_hidden">Hidden (tap to restore)</string>
+    <string name="settings_section_playback">Playback</string>
+    <string name="settings_music_default_mode">Default music play mode</string>
+    <string name="settings_music_mode_sequence">Sequential</string>
+    <string name="settings_music_mode_repeat_one">Repeat one</string>
+    <string name="settings_music_mode_shuffle">Shuffle</string>
+    <string name="settings_video_default_orientation">Default video orientation</string>
+    <string name="settings_video_orientation_auto">Auto</string>
+    <string name="settings_video_orientation_landscape">Landscape</string>
+    <string name="settings_video_orientation_portrait">Portrait</string>
+    <string name="settings_video_seek_sensitivity">Swipe to seek</string>
+    <string name="settings_video_seek_seconds">%d seconds</string>
+    <string name="settings_video_background">Play video in background</string>
+    <string name="settings_video_background_pip">Picture-in-picture</string>
+    <string name="settings_video_background_pause">Pause</string>
+    <string name="settings_section_folders">Folders</string>
+    <string name="settings_excluded_folders">Excluded folders</string>
+    <string name="settings_excluded_count">%d items</string>
+    <string name="settings_section_pdf">PDF</string>
+    <string name="settings_pdf_folder">PDF folder</string>
+    <string name="settings_pdf_folder_none">Not selected</string>
+    <string name="settings_pdf_folder_selected">Selected</string>
+    <string name="settings_pdf_default_layout">Default PDF layout</string>
+    <string name="settings_pdf_layout_vertical">Vertical</string>
+    <string name="settings_pdf_layout_horizontal">Horizontal</string>
+
+    <!-- 屏蔽文件夹页 -->
+    <string name="excluded_title">Excluded folders</string>
+    <string name="excluded_desc">Media in selected folders and their subfolders will be hidden</string>
+    <string name="excluded_choose">Choose folder</string>
+    <string name="excluded_manual">Manual input</string>
+    <string name="excluded_empty_title">No excluded folders</string>
+    <string name="excluded_empty_hint">Tap an icon in the top bar to add an excluded folder</string>
+    <string name="excluded_manual_title">Enter path manually</string>
+    <string name="excluded_manual_desc">Enter part of the folder path, e.g. tencent/MicroMsg</string>
+    <string name="excluded_pick_root">Choose a specific folder, not the storage root</string>
+    <string name="excluded_already">Already excluded</string>
+    <string name="excluded_added">Added: %s</string>
+
+    <!-- 音乐页 -->
+    <string name="music_no_lyrics">No lyrics</string>
+    <string name="music_play_pause">Play/Pause</string>
+    <string name="music_previous">Previous</string>
+    <string name="music_next">Next</string>
+    <string name="music_play_mode">Play mode</string>
+
+    <!-- 视频页 -->
+    <string name="video_speed">Speed</string>
+    <string name="video_loop">Loop</string>
+    <string name="video_rotate">Rotate</string>
+    <string name="video_play_pause">Play/Pause</string>
+    <string name="video_previous">Previous</string>
+    <string name="video_next">Next</string>
+
+    <!-- PDF 页 -->
+    <string name="pdf_cannot_open">Cannot open this PDF</string>
+    <string name="pdf_opening">Opening…</string>
+    <string name="pdf_page">Page %d</string>
+    <string name="pdf_rendering">Rendering…</string>
+    <string name="pdf_switch_horizontal">Switch to horizontal</string>
+    <string name="pdf_switch_vertical">Switch to vertical</string>
+
+    <!-- 图片查看器 -->
+    <string name="image_page_indicator">%1$d / %2$d</string>
+
+    <!-- MiniBar -->
+    <string name="mini_bar_play">Play</string>
+    <string name="mini_bar_pause">Pause</string>
+    <string name="mini_bar_close">Close</string>
+
+    <string name="error_playback_failed">Unable to start playback</string>
+
 </resources>

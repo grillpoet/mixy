@@ -23,6 +23,14 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
+ * 播放层错误。UI 层据此选择本地化文案，状态层不携带用户可见字符串。
+ */
+enum class MusicError {
+    /** MediaController 连接 PlaybackService 失败。 */
+    CONNECTION_FAILED,
+}
+
+/**
  * 音乐播放页 UI 状态。
  *
  * position / duration 不在这里：它们每秒变 5 次，如果放进这个 data class，
@@ -35,25 +43,13 @@ data class MusicPlayerState(
     val isBuffering: Boolean = false,
     val playMode: PlayMode = PlayMode.SEQUENCE,
     val lyrics: List<LyricLine> = emptyList(),
-    val error: String? = null
+    val error: MusicError? = null,
+    /** 原始异常信息，开发者向，UI 可选择性展示为小字。 */
+    val errorDetail: String? = null
 ) {
     val current: MediaItem? get() = cursor.current
 }
 
-/**
- * 单例音乐播放控制器。
- *
- * 整个 App 只有一个实例（放在 AppContainer）。
- * 切换文件夹 → 调 [setQueue]，换队列但不换实例。
- * listener 只挂一次；tick 每次 setQueue 重启（clear 后也能恢复）。
- *
- * 状态流拆分：
- *  - [state]     低频状态：切歌、播放/暂停、缓冲、播放模式、歌词、错误
- *  - [position]  高频状态：每 200ms 更新一次。只被进度条和歌词订阅
- *  - [duration]  高频状态：同上。只被进度条订阅
- *
- * 拆分的收益：MiniBar 只 collect [state]，不因 position 变化而重组。
- */
 class MusicPlayerController(private val container: AppContainer) {
 
     private val scope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
@@ -71,10 +67,6 @@ class MusicPlayerController(private val container: AppContainer) {
     private var tickJob: Job? = null
     private var lyricsJob: Job? = null
 
-    /**
-     * 关闭播放：停止、清空队列、state 置 null。
-     * 迷你栏和通知栏都会随之消失。
-     */
     fun clear() {
         val controller = container.controllerManager.controller
         runCatching {
@@ -90,22 +82,13 @@ class MusicPlayerController(private val container: AppContainer) {
         _duration.value = 0L
     }
 
-    /**
-     * 设置播放队列。
-     *
-     * 关键点：
-     *  1. 先置 state，再 connect。connect 失败时 UI 能显示 error 而不是白屏。
-     *  2. 同队列只 seek，不重建，避免打断当前播放。
-     *  3. tick 每次 setQueue 都重启（修掉 clear 之后 tick 不再启动的 bug）。
-     *  4. 末尾把 cursor 记到 PlaybackSession，MiniBar 能拿到最新队列。
-     */
     suspend fun setQueue(cursor: PlaylistCursor) {
         val old = _state.value
         val sameQueue = old != null && old.cursor.items == cursor.items
 
         if (sameQueue) {
             _state.update {
-                it?.copy(cursor = cursor, isBuffering = true, error = null)
+                it?.copy(cursor = cursor, isBuffering = true, error = null, errorDetail = null)
             }
         } else {
             _state.value = MusicPlayerState(cursor = cursor, isBuffering = true)
@@ -116,7 +99,11 @@ class MusicPlayerController(private val container: AppContainer) {
         val controller = runCatching { container.controllerManager.connect() }.getOrNull()
         if (controller == null) {
             _state.update {
-                it?.copy(isBuffering = false, error = "无法连接播放服务")
+                it?.copy(
+                    isBuffering = false,
+                    error = MusicError.CONNECTION_FAILED,
+                    errorDetail = null
+                )
             }
             return
         }
@@ -126,7 +113,6 @@ class MusicPlayerController(private val container: AppContainer) {
             listenerAttached = true
         }
 
-        // tick 每次 setQueue 都重启
         tickJob?.cancel()
         tickJob = scope.launch {
             while (isActive) {

@@ -14,9 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
  *
  * [player] 直接暴露给 UI：VideoScreen 需要把 TextureView 挂上去、
  * 挂 Listener 收 VideoSize 变化。前后台切换的暂停/恢复也直接用 player，
- * 不经过 ViewModel。
- *
- * 这是有意打破封装的地方，属于 AndroidView 互操作场景下的常见妥协。
+ * 不经过 ViewModel。这是有意打破封装，属于 AndroidView 互操作场景下的常见妥协。
  */
 class VideoPlayerViewModel(
     private val engine: VideoEngine
@@ -26,6 +24,13 @@ class VideoPlayerViewModel(
     val player: ExoPlayer get() = engine.player
 
     val isPlaying: StateFlow<Boolean> = engine.isPlaying
+
+    /**
+     * 缓冲中。seek 后、首帧加载、网络卡顿时为 true。
+     * UI 用于显示 spinner，避免用户误以为卡死。
+     */
+    val isBuffering: StateFlow<Boolean> = engine.isBuffering
+
     val position: StateFlow<Long> = engine.position
     val duration: StateFlow<Long> = engine.duration
 

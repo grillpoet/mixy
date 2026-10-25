@@ -5,28 +5,18 @@ import android.os.Build
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
 import coil3.gif.AnimatedImageDecoder
 import coil3.gif.GifDecoder
-import com.grillpoet.mixy.data.cover.AudioCoverFetcher
-import com.grillpoet.mixy.data.cover.AudioCoverKeyer
-import com.grillpoet.mixy.data.cover.PdfCoverFetcher
-import com.grillpoet.mixy.data.cover.PdfCoverKeyer
-import com.grillpoet.mixy.data.cover.VideoCoverFetcher
-import com.grillpoet.mixy.data.cover.VideoCoverKeyer
+import coil3.memory.MemoryCache
+import com.grillpoet.mixy.cover.AudioCoverFetcher
+import com.grillpoet.mixy.cover.AudioCoverKeyer
+import com.grillpoet.mixy.cover.PdfCoverFetcher
+import com.grillpoet.mixy.cover.PdfCoverKeyer
+import com.grillpoet.mixy.cover.VideoCoverFetcher
+import com.grillpoet.mixy.cover.VideoCoverKeyer
+import okio.Path.Companion.toOkioPath
 
-/**
- * Application 入口。
- *
- * 通过 [SingletonImageLoader.Factory] 定制 Coil 3 的 ImageLoader：
- *  - 注册三个自定义 Fetcher（音频内嵌封面 / 视频抽帧 / PDF 首页）
- *  - 注册对应 Keyer，让内存缓存按 URI 生效
- *  - API 28+ 用 [AnimatedImageDecoder] 支持 GIF / 动画 WebP / HEIF
- *  - 旧版本退回 [GifDecoder]（仅支持 GIF）
- *
- * Coil 3 变化说明：
- *  - [ImageLoaderFactory] 已被移除，改用 [SingletonImageLoader.Factory]
- *  - [ImageDecoderDecoder] 已重命名为 [AnimatedImageDecoder]
- */
 class App : Application(), SingletonImageLoader.Factory {
 
     lateinit var container: AppContainer
@@ -39,12 +29,23 @@ class App : Application(), SingletonImageLoader.Factory {
 
     override fun newImageLoader(context: PlatformContext): ImageLoader {
         return ImageLoader.Builder(this)
+            // 内存缓存：25% 可用堆。列表滚动时缩略图命中率显著提升。
+            .memoryCache {
+                MemoryCache.Builder()
+                    .maxSizePercent(this, 0.25)
+                    .build()
+            }
+            // 磁盘缓存：250MB，放在 cacheDir 下，卸载自动清。
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache").toOkioPath())
+                    .maxSizeBytes(250L * 1024 * 1024)
+                    .build()
+            }
             .components {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                    // API 28+：系统 ImageDecoder，支持 GIF / 动画 WebP / HEIF
                     add(AnimatedImageDecoder.Factory())
                 } else {
-                    // API 26-27：退回旧 GifDecoder，仅支持 GIF
                     add(GifDecoder.Factory())
                 }
                 add(AudioCoverFetcher.Factory(this@App))

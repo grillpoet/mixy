@@ -52,8 +52,8 @@
 # ---------- Coil 3 自定义 Fetcher / Keyer ----------
 # AudioCover / VideoCover / PdfCover 是 @JvmInline value class，
 # Coil 通过 T::class 匹配类型，R8 内联后可能影响运行时匹配。保留整个包。
--keep class com.grillpoet.mixy.data.cover.** { *; }
--keepclassmembers class com.grillpoet.mixy.data.cover.** {
+-keep class com.grillpoet.mixy.image.cover.** { *; }
+-keepclassmembers class com.grillpoet.mixy.image.cover.** {
     <init>(...);
 }
 

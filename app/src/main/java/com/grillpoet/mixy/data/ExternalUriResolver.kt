@@ -7,6 +7,7 @@ import android.provider.OpenableColumns
 import com.grillpoet.mixy.data.model.MediaItem
 import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.data.model.PlaylistCursor
+import com.grillpoet.mixy.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -18,7 +19,6 @@ import kotlinx.coroutines.withContext
  */
 object ExternalUriResolver {
 
-    private const val FALLBACK_FOLDER_NAME = "外部"
 
     /**
      * 解析失败返回 null（MIME 不支持或 URI 无法访问）。
@@ -42,7 +42,7 @@ object ExternalUriResolver {
                 uri = uri,
                 displayName = meta.name,
                 folderPath = "",
-                folderName = FALLBACK_FOLDER_NAME,
+                folderName = context.getString(R.string.folder_fallback_name),
                 mimeType = mime,
                 size = meta.size,
                 dateModified = meta.dateModified,

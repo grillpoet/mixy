@@ -104,8 +104,6 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.guava)
 
-    implementation(libs.androidx.documentfile)
-
     implementation(libs.coil.compose)
 
     testImplementation(libs.junit)

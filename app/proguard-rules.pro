@@ -82,10 +82,6 @@
 -dontwarn androidx.datastore.**
 
 
-# ---------- DocumentFile ----------
--dontwarn androidx.documentfile.**
-
-
 # ---------- Parcelable / Serializable ----------
 -keepclassmembers class * implements android.os.Parcelable {
     public static final android.os.Parcelable$Creator *;

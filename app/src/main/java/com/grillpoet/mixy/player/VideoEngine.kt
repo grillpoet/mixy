@@ -99,10 +99,13 @@ class VideoEngine(context: Context) {
                     }
                     Player.STATE_ENDED -> {
                         _isBuffering.value = false
-                        // tick 在 onIsPlayingChanged(false) 时已停，最后一次 position
-                        // 可能还差几十毫秒没跑到底。显式钉到 duration，
-                        // 让进度条显示 100%。
-                        _position.value = player.duration.coerceAtLeast(0)
+                        // 修复：STATE_ENDED 时 player.duration 在流式/未知时长场景
+                        // 可能返回 C.TIME_UNSET（Long.MIN_VALUE + 1），
+                        // coerceAtLeast(0) 会得到 0，进度条从 100% 跳回 0。
+                        // 优先用已缓存的 _duration，极端情况下用 currentPosition 兜底。
+                        val end = _duration.value.takeIf { it > 0 }
+                            ?: player.currentPosition.coerceAtLeast(0)
+                        _position.value = end
                     }
                     Player.STATE_IDLE -> _isBuffering.value = false
                 }

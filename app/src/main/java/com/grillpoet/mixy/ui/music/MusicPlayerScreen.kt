@@ -26,8 +26,6 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.R
 import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.player.MusicPlayerState
@@ -36,21 +34,25 @@ import com.grillpoet.mixy.ui.music.components.LyricsView
 import com.grillpoet.mixy.ui.music.components.MusicControlPanel
 import com.grillpoet.mixy.ui.music.components.MusicCover
 
+/**
+ * 音乐播放页。
+ *
+ * 参数显式化：不再接收 AppContainer，只声明 [musicVm]。
+ * 这样他人移植音乐模块时，依赖边界一目了然。
+ */
 @Composable
 fun MusicPlayerScreen(
     cursor: PlaylistCursor,
-    container: AppContainer,
+    musicVm: MusicPlayerViewModel,
     onBack: () -> Unit
 ) {
-    val vm: MusicPlayerViewModel = viewModel(factory = container.viewModelFactory)
-
     LaunchedEffect(cursor.items) {
-        vm.startPlayback(cursor)
+        musicVm.startPlayback(cursor)
     }
 
-    val state by vm.state.collectAsState()
-    val position by vm.position.collectAsState()
-    val duration by vm.duration.collectAsState()
+    val state by musicVm.state.collectAsState()
+    val position by musicVm.position.collectAsState()
+    val duration by musicVm.duration.collectAsState()
 
     val configuration = LocalConfiguration.current
     val isLandscape =
@@ -70,7 +72,7 @@ fun MusicPlayerScreen(
             hasError -> ErrorState(
                 title = stringResource(R.string.error_playback_failed),
                 detail = s.errorDetail,
-                onRetry = { vm.retry() },
+                onRetry = { musicVm.retry() },
                 onBack = onBack
             )
 
@@ -79,11 +81,11 @@ fun MusicPlayerScreen(
                 position = position,
                 duration = duration,
                 onBack = onBack,
-                onToggle = vm::togglePlayPause,
-                onNext = vm::next,
-                onPrev = vm::prev,
-                onSeek = vm::seekTo,
-                onCycleMode = vm::cyclePlayMode
+                onToggle = musicVm::togglePlayPause,
+                onNext = musicVm::next,
+                onPrev = musicVm::prev,
+                onSeek = musicVm::seekTo,
+                onCycleMode = musicVm::cyclePlayMode
             )
 
             else -> PortraitLayout(
@@ -91,11 +93,11 @@ fun MusicPlayerScreen(
                 position = position,
                 duration = duration,
                 onBack = onBack,
-                onToggle = vm::togglePlayPause,
-                onNext = vm::next,
-                onPrev = vm::prev,
-                onSeek = vm::seekTo,
-                onCycleMode = vm::cyclePlayMode
+                onToggle = musicVm::togglePlayPause,
+                onNext = musicVm::next,
+                onPrev = musicVm::prev,
+                onSeek = musicVm::seekTo,
+                onCycleMode = musicVm::cyclePlayMode
             )
         }
     }

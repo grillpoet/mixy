@@ -2,11 +2,9 @@ package com.grillpoet.mixy.ui.folder
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -79,7 +77,6 @@ import com.grillpoet.mixy.ui.common.MediaTypeChips
 import com.grillpoet.mixy.ui.nav.Screen
 import androidx.compose.foundation.lazy.grid.itemsIndexed as gridItemsIndexed
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
@@ -104,7 +101,11 @@ fun FolderListScreen(
         PermissionHelper.hasForType(context, state.currentType)
     }
 
-    var permissionRequested by remember { mutableStateOf(false) }
+    // 修复：permissionRequested 之前是全局 bool，导致在 MUSIC 弹过一次权限后，
+    // 切到 IMAGE/VIDEO 时按钮直接变成"去设置"，永远不再发起该类型的权限请求。
+    // 改为按类型追踪：每个 MediaType 各自记录是否请求过。
+    var requestedTypes by remember { mutableStateOf(emptySet<MediaType>()) }
+    val permissionRequested = state.currentType in requestedTypes
 
     val permissionLifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(permissionLifecycleOwner) {
@@ -120,7 +121,8 @@ fun FolderListScreen(
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) {
-        permissionRequested = true
+        // 只标记"这次请求的类型"，不影响其他类型。
+        requestedTypes = requestedTypes + state.currentType
         permissionTick++
         if (PermissionHelper.hasForType(context, state.currentType)) {
             vm.refresh()
@@ -240,14 +242,7 @@ fun FolderListScreen(
                                 currentIndex = index,
                                 sourceType = state.currentType
                             )
-                            onNavigate(
-                                when (state.currentType) {
-                                    MediaType.MUSIC -> Screen.MusicPlayer(cursor)
-                                    MediaType.IMAGE -> Screen.ImageViewer(cursor)
-                                    MediaType.VIDEO -> Screen.VideoPlayer(cursor)
-                                    MediaType.PDF -> Screen.PdfViewer(cursor)
-                                }
-                            )
+                            onNavigate(Screen.fromCursor(cursor))
                         }
                     }
                 )

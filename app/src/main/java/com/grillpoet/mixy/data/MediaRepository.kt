@@ -21,6 +21,15 @@ class MediaRepository(
         pdfTreeUri: String? = null,
         onScanProgress: ((Int) -> Unit)? = null
     ) {
+        // 修复：PDF 在未指定目录时必然返回空。这是"配置缺失"而非"真的没数据"。
+        // 若把这个空结果写入 MediaCache，用户随后设置目录后 30 分钟内
+        // 都拿不到数据（除非 forceRefresh 或重启清内存缓存）。
+        // 这里只更新 StateFlow 让 UI 显示空，不写缓存。
+        if (type == MediaType.PDF && pdfTreeUri.isNullOrBlank()) {
+            _folders.update { m -> m + (type to emptyList()) }
+            return
+        }
+
         if (!forceRefresh) {
             cache.get(type)?.let {
                 _folders.update { m -> m + (type to it) }

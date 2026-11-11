@@ -16,7 +16,7 @@ android {
         versionName = "1.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a","x86_64")
         }
     }
 
@@ -24,7 +24,6 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            // TODO(release): 上架前替换为正式签名配置。
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -119,7 +118,6 @@ dependencies {
     // debugAndroidTestRuntimeClasspath 解析失败（ui-test-junit4 找不到版本），
     // 所以必须保留。警告忽略。
     implementation(libs.androidx.lifecycle.runtime.compose)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(libs.androidx.junit)

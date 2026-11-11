@@ -59,7 +59,9 @@ class PdfCoverFetcher(
                 pfd?.let { runCatching { it.close() } }
                 pfd = null
 
-                tempFile = File(context.cacheDir, "pdf_${System.currentTimeMillis()}.pdf")
+                // 用 createTempFile：JDK 原子性生成唯一文件名，
+                // 避免多封面并发渲染时同名碰撞、finally 误删对方文件。
+                tempFile = File.createTempFile("pdf_", ".pdf", context.cacheDir)
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     tempFile.outputStream().use { input.copyTo(it) }
                 } ?: return null

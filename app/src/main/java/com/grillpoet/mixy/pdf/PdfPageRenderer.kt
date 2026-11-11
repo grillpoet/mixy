@@ -6,14 +6,14 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import androidx.core.graphics.createBitmap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
-import androidx.core.graphics.createBitmap
-import kotlinx.coroutines.CancellationException
 
 class PdfPageRenderer private constructor(
     private val tempFile: File?,
@@ -28,17 +28,22 @@ class PdfPageRenderer private constructor(
     val pageCount: Int
         get() = if (closed) 0 else (renderer?.pageCount ?: 0)
 
+    /**
+     * 渲染一页。
+     *
+     * 修复：PdfRenderer 的 openPage/render 是阻塞 IO，
+     * withContext(Dispatchers.IO) 在协程取消时不会中断已阻塞的线程。
+     * 改用 runInterruptible(Dispatchers.IO)：协程取消时会向执行线程
+     * 发送 interrupt，让阻塞的 render 有机会提前退出，避免快速滑动时
+     * 旧渲染任务堆积占满 IO 线程池。
+     */
     suspend fun renderPage(index: Int): Bitmap? = renderMutex.withLock {
-        withContext(Dispatchers.IO) {
-            // 协程被取消时（快速滚动导致 produceState 重启）立即退出，
-            // 不再继续渲染。避免大量渲染任务堆积。
-            ensureActive()
-            if (closed) return@withContext null
-            val r = renderer ?: return@withContext null
-            runCatching {
+        runInterruptible(Dispatchers.IO) {
+            if (closed) return@runInterruptible null
+            val r = renderer ?: return@runInterruptible null
+            try {
                 r.openPage(index).use { page ->
-                    // 渲染前的第二次取消检查：page 打开后如果协程已被取消，直接返回。
-                    ensureActive()
+                    if (closed) return@runInterruptible null
                     val scale = renderWidth.toFloat() / page.width
                     val height = (page.height * scale).toInt().coerceAtLeast(1)
                     val bmp = createBitmap(renderWidth, height)
@@ -49,7 +54,11 @@ class PdfPageRenderer private constructor(
                     )
                     bmp
                 }
-            }.getOrNull()
+            } catch (e: Exception) {
+                // interrupt 导致的异常不应让 UI 崩溃，视为本页渲染失败。
+                if (e is CancellationException) throw e
+                null
+            }
         }
     }
 
@@ -88,10 +97,7 @@ class PdfPageRenderer private constructor(
             } catch (_: Exception) {
             }
 
-            val temp = File(
-                context.cacheDir,
-                "pdf_${System.currentTimeMillis()}.pdf"
-            )
+            val temp = File.createTempFile("pdf_", ".pdf", context.cacheDir)
             try {
                 context.contentResolver.openInputStream(uri)?.use { input ->
                     temp.outputStream().use { input.copyTo(it) }

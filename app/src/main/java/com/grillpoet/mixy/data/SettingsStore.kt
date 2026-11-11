@@ -45,8 +45,18 @@ data class Settings(
     val sortMode: SortMode = SortMode.NAME,
     val sortOrder: SortOrder = SortOrder.ASC
 ) {
+    /**
+     * 对用户可见的媒体类型。
+     *
+     * 在 chipOrder 基础上补全 MediaType.entries 中缺失的新类型，
+     * 追加到末尾。这样新增 MediaType 后 chip 自动出现，
+     * 不需要迁移用户已有的 chipOrder 数据，也不会"静默不可见"。
+     */
     val visibleChips: List<MediaType>
-        get() = chipOrder.filter { it !in chipHidden }
+        get() {
+            val ordered = chipOrder + MediaType.entries.filter { it !in chipOrder }
+            return ordered.filter { it !in chipHidden }
+        }
 
     companion object {
         val DEFAULT_EXCLUDED = listOf(

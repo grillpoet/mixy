@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.PictureInPictureParams
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.util.Rational
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -42,27 +43,21 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
-import com.grillpoet.mixy.AppContainer
+import com.grillpoet.mixy.data.Settings
 import com.grillpoet.mixy.data.model.PlaylistCursor
 import com.grillpoet.mixy.data.model.VideoOrientation
 import com.grillpoet.mixy.ui.common.formatDuration
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
 
 private val CONTROLS_HIDE_DELAY = 3500L.milliseconds
-
-/**
- * seek 反馈的最小显示时长。低于这个值，用户感知不到反馈，
- * 会觉得 seek 没反应。200ms 是经验值，既能感知又不拖沓。
- */
 private const val MIN_SEEK_FEEDBACK_MS = 200L
 
-/** 构建 PiP 参数。aspect 非法时回退 16:9，比例限制在系统可接受范围。 */
-private fun buildPipParams(aspect: Float): PictureInPictureParams {
+private fun buildPipParams(aspect: Float, autoEnter: Boolean): PictureInPictureParams {
     val safe = if (aspect > 0f && aspect.isFinite()) {
         aspect.coerceIn(0.4f, 2.5f)
     } else {
@@ -73,15 +68,34 @@ private fun buildPipParams(aspect: Float): PictureInPictureParams {
     } else {
         Rational(10, ((1f / safe) * 10).roundToInt().coerceAtLeast(10))
     }
-    return PictureInPictureParams.Builder().setAspectRatio(ratio).build()
+    return PictureInPictureParams.Builder()
+        .setAspectRatio(ratio)
+        .apply {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setAutoEnterEnabled(autoEnter)
+            }
+        }
+        .build()
 }
 
+/**
+ * 视频播放页。
+ *
+ * 参数显式化：不再接收 AppContainer，只声明真正需要的三样：
+ *  - [videoVm]：播放器 ViewModel
+ *  - [settingsFlow]：读取视频方向 / 后台行为 / 快进灵敏度
+ *  - [onStopMusic]：视频开始时停掉音乐（互斥策略由调用方决定）
+ *
+ * 这样他人移植视频模块时，不用读 AppContainer 就知道依赖边界。
+ */
 @SuppressLint("SourceLockedOrientationActivity")
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 fun VideoPlayerScreen(
     cursor: PlaylistCursor,
-    container: AppContainer,
+    videoVm: VideoPlayerViewModel,
+    settingsFlow: StateFlow<Settings>,
+    onStopMusic: () -> Unit,
     onBack: () -> Unit
 ) {
     if (cursor.items.isEmpty()) return
@@ -89,11 +103,9 @@ fun VideoPlayerScreen(
     val context = LocalContext.current
     val activity = context as? Activity
 
-    val videoVm: VideoPlayerViewModel = viewModel(factory = container.viewModelFactory)
+    LaunchedEffect(Unit) { onStopMusic() }
 
-    LaunchedEffect(Unit) { container.stopMusicForVideo() }
-
-    val settings by container.settingsStore.flow.collectAsState()
+    val settings by settingsFlow.collectAsState()
 
     var currentIndex by remember { mutableIntStateOf(cursor.currentIndex) }
     val currentItem = cursor.items.getOrNull(currentIndex) ?: return
@@ -113,14 +125,29 @@ fun VideoPlayerScreen(
     var lastInteraction by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
     var dragSeekPreview by remember { mutableStateOf<Long?>(null) }
-
-    // seek 动作的独立反馈。区别于 isBuffering：
-    //  - isBuffering 反映播放器状态，短 seek 可能一闪而过甚至不触发
-    //  - seekStartedAt 反映用户动作，保证每次 seek 都有视觉反馈
-    // 最小显示 MIN_SEEK_FEEDBACK_MS，避免闪烁。
     var seekStartedAt by remember { mutableStateOf<Long?>(null) }
 
     var wasPlayingBeforeBackground by remember { mutableStateOf(false) }
+
+    // ---------- PiP 参数 ----------
+    val pipEnabled = settings.videoBackground == "PIP"
+    LaunchedEffect(pipEnabled, isPlaying, videoAspect) {
+        val act = activity ?: return@LaunchedEffect
+        if (!pipEnabled) return@LaunchedEffect
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return@LaunchedEffect
+        act.setPictureInPictureParams(
+            buildPipParams(videoAspect, autoEnter = isPlaying)
+        )
+    }
+
+    DisposableEffect(pipEnabled, videoAspect) {
+        val act = activity ?: return@DisposableEffect onDispose {}
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            return@DisposableEffect onDispose {}
+        }
+        act.setPictureInPictureParams(buildPipParams(videoAspect, autoEnter = false))
+        onDispose {}
+    }
 
     LaunchedEffect(Unit) {
         val act = activity ?: return@LaunchedEffect
@@ -137,45 +164,30 @@ fun VideoPlayerScreen(
         }
     }
 
+    // ---------- 后台行为 ----------
     val lifecycleOwner = LocalLifecycleOwner.current
-    val latestAspect = rememberUpdatedState(videoAspect)
     DisposableEffect(Unit) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                // ON_PAUSE 早于 ON_STOP。先在这里尝试进入 PiP：
-                // 成功则保留播放，失败才暂停。
                 Lifecycle.Event.ON_PAUSE -> {
                     if (activity?.isInPictureInPictureMode == true) {
                         return@LifecycleEventObserver
                     }
-                    val controller = container.videoEngine.player
+                    val controller = videoVm.player
                     wasPlayingBeforeBackground = controller.isPlaying
 
-                    val pipEnabled =
-                        container.settingsStore.flow.value.videoBackground == "PIP"
-                    if (pipEnabled && wasPlayingBeforeBackground && activity != null) {
-                        val entered = runCatching {
-                            activity.enterPictureInPictureMode(
-                                buildPipParams(latestAspect.value)
-                            )
-                        }.getOrDefault(false)
-                        if (entered) return@LifecycleEventObserver
+                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                        val pipWanted = settingsFlow.value.videoBackground == "PIP"
+                        if (pipWanted && wasPlayingBeforeBackground && activity != null) {
+                            val entered = runCatching {
+                                activity.enterPictureInPictureMode(
+                                    buildPipParams(videoAspect, autoEnter = false)
+                                )
+                            }.getOrDefault(false)
+                            if (entered) return@LifecycleEventObserver
+                        }
                     }
                     if (controller.isPlaying) controller.pause()
-                }
-
-                // 兜底：ON_PAUSE 进 PiP 失败时再试一次。
-                Lifecycle.Event.ON_STOP -> {
-                    if (container.settingsStore.flow.value.videoBackground != "PIP") {
-                        return@LifecycleEventObserver
-                    }
-                    val act = activity ?: return@LifecycleEventObserver
-                    if (act.isInPictureInPictureMode) return@LifecycleEventObserver
-                    runCatching {
-                        act.enterPictureInPictureMode(
-                            buildPipParams(latestAspect.value)
-                        )
-                    }
                 }
 
                 Lifecycle.Event.ON_RESUME -> {
@@ -183,7 +195,7 @@ fun VideoPlayerScreen(
                         return@LifecycleEventObserver
                     }
                     if (wasPlayingBeforeBackground) {
-                        container.videoEngine.player.play()
+                        videoVm.player.play()
                     }
                     wasPlayingBeforeBackground = false
                 }
@@ -204,13 +216,10 @@ fun VideoPlayerScreen(
     }
 
     val interacting = dragSeekPreview != null
-    // 拖动中由 DragSeekOverlay 提供反馈，不显示 spinner；
-    // 松手后 seekStartedAt != null 或播放器正在 buffering 都显示。
     val showSeekSpinner = !interacting &&
             (seekStartedAt != null || isBuffering)
 
     LaunchedEffect(controlsVisible, lastInteraction, isPlaying, interacting, showSeekSpinner) {
-        // seek/buffering 期间不自动隐藏控件，方便用户继续调整。
         if (!controlsVisible || !isPlaying || interacting || showSeekSpinner) {
             return@LaunchedEffect
         }
@@ -220,14 +229,9 @@ fun VideoPlayerScreen(
         }
     }
 
-    // seek 反馈清除：
-    //  - buffering 期间保持显示（由 isBuffering 接管）
-    //  - buffering 结束后，至少再补到 MIN_SEEK_FEEDBACK_MS
-    //  - 若 seek 未触发 buffering，从 seekStartedAt 起算 200ms 后清除
     LaunchedEffect(seekStartedAt, isBuffering) {
         val started = seekStartedAt ?: return@LaunchedEffect
         if (isBuffering) return@LaunchedEffect
-
         val elapsed = System.currentTimeMillis() - started
         val remaining = MIN_SEEK_FEEDBACK_MS - elapsed
         if (remaining > 0) delay(remaining.milliseconds)
@@ -305,8 +309,6 @@ fun VideoPlayerScreen(
             DragSeekOverlay(preview = preview, duration = duration)
         }
 
-        // seek 反馈：用户松手后到真正恢复播放之间的视觉提示。
-        // 拖动手势进行时不显示（DragSeekOverlay 已经有反馈）。
         if (showSeekSpinner) {
             BufferingOverlay()
         }

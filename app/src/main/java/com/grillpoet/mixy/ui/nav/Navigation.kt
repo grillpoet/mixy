@@ -18,6 +18,24 @@ sealed interface Screen {
     data class ImageViewer(val cursor: PlaylistCursor) : Screen
     data class VideoPlayer(val cursor: PlaylistCursor) : Screen
     data class PdfViewer(val cursor: PlaylistCursor) : Screen
+
+    companion object {
+        /**
+         * 从 PlaylistCursor 构造目标播放页。
+         *
+         * 新增 MediaType 时只需在这里加 1 个分支，
+         * 4 个调用点（搜索、文件夹内容、外部 URI）自动覆盖。
+         *
+         * 放在 Screen 的 companion 里，是为了让"类型 → 页面"的映射
+         * 与 Screen 定义同文件，避免额外引入 Mapper 文件。
+         */
+        fun fromCursor(cursor: PlaylistCursor): Screen = when (cursor.sourceType) {
+            MediaType.MUSIC -> MusicPlayer(cursor)
+            MediaType.IMAGE -> ImageViewer(cursor)
+            MediaType.VIDEO -> VideoPlayer(cursor)
+            MediaType.PDF -> PdfViewer(cursor)
+        }
+    }
 }
 
 class Navigator {

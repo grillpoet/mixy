@@ -27,9 +27,6 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.time.Duration.Companion.milliseconds
 
-/**
- * 文件夹加载错误。UI 层据此选择本地化文案。
- */
 enum class FolderError {
     LOAD_FAILED,
 }
@@ -40,14 +37,11 @@ data class FolderUiState(
     val folders: List<MediaFolder> = emptyList(),
     val searchQuery: String = "",
     val searchResults: List<MediaItem> = emptyList(),
-    /** 首次加载 / 切换类型。由骨架屏消费。 */
     val isLoading: Boolean = true,
-    /** 已有数据时的下拉刷新。由 PullToRefreshBox 消费。 */
     val isRefreshing: Boolean = false,
     val skeletonVisible: Boolean = true,
     val scanProgress: Int? = null,
     val error: FolderError? = null,
-    /** 原始异常信息，开发者向，UI 可选展示为小字。 */
     val errorDetail: String? = null
 ) {
     val isSearching: Boolean get() = searchQuery.isNotBlank()
@@ -62,14 +56,25 @@ class FolderViewModel(
     private val _state = MutableStateFlow(FolderUiState())
     val state: StateFlow<FolderUiState> = _state.asStateFlow()
 
-    private var currentSettings: Settings = Settings()
     private var loadGeneration = 0
+
+    // 用 ready 标志判断"已初始化"，而不是用 `!= null`。
+    // pdfTreeUri 默认值就是 null，用 `!= null` 会把"用户第一次选目录"
+    // 误判成"未初始化"，导致 load 永远不触发。
     private var prevPdfTreeUri: String? = null
+    private var pdfTreeUriReady = false
+
+    private var prevExcludedPaths: List<String>? = null
+    private var excludedPathsReady = false
 
     init {
         viewModelScope.launch {
             settings.awaitLoaded()
-            currentSettings = settings.flow.value
+            val s0 = settings.flow.value
+            prevPdfTreeUri = s0.pdfTreeUri
+            pdfTreeUriReady = true
+            prevExcludedPaths = s0.excludedPaths
+            excludedPathsReady = true
 
             launch {
                 val queryFlow = _state
@@ -91,16 +96,27 @@ class FolderViewModel(
         s: Settings,
         query: String
     ) {
-        currentSettings = s
-
+        // PDF 目录切换：作废缓存并强制重扫。
+        // 用 pdfTreeUriReady 而不是 prevPdfTreeUri != null：
+        // 后者在"用户第一次选目录"（prev = null, new = "content://..."）时
+        // 会因 null 判断短路，永远不触发 load。
         val newPdfUri = s.pdfTreeUri
-        if (prevPdfTreeUri != null && prevPdfTreeUri != newPdfUri) {
+        if (pdfTreeUriReady && prevPdfTreeUri != newPdfUri) {
             repo.invalidate(MediaType.PDF)
             if (_state.value.currentType == MediaType.PDF) {
                 load(MediaType.PDF, forceRefresh = true)
             }
         }
         prevPdfTreeUri = newPdfUri
+
+        // 排除项变更：同上，用 ready 标志。
+        val newExcluded = s.excludedPaths
+        if (excludedPathsReady && prevExcludedPaths != newExcluded) {
+            val cur = _state.value.currentType
+            repo.invalidate(cur)
+            load(cur, forceRefresh = true)
+        }
+        prevExcludedPaths = newExcluded
 
         val visible = s.visibleChips.ifEmpty { listOf(MediaType.MUSIC) }
         val current = _state.value.currentType
@@ -136,7 +152,6 @@ class FolderViewModel(
                 isRefreshing = false,
                 skeletonVisible = !hasData,
                 scanProgress = null,
-                // 有数据说明加载成功，清掉历史错误。
                 error = if (hasData) null else it.error,
                 errorDetail = if (hasData) null else it.errorDetail
             )
@@ -196,8 +211,10 @@ class FolderViewModel(
     private fun load(type: MediaType, forceRefresh: Boolean = false) {
         val generation = ++loadGeneration
         viewModelScope.launch {
-            val excluded = currentSettings.excludedPaths
-            val pdfUri = currentSettings.pdfTreeUri
+            settings.awaitLoaded()
+            val s = settings.flow.value
+            val excluded = s.excludedPaths
+            val pdfUri = s.pdfTreeUri
 
             val lastProgressAt = AtomicLong(0L)
             val onProgress: ((Int) -> Unit)? =
@@ -230,7 +247,7 @@ class FolderViewModel(
                 val list = repo.folders.value[type].orEmpty()
                 val sorted = MediaSorter.sortFolders(
                     list,
-                    SortSpec(currentSettings.sortMode, currentSettings.sortOrder)
+                    SortSpec(s.sortMode, s.sortOrder)
                 )
                 _state.update {
                     it.copy(

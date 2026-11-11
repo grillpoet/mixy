@@ -61,10 +61,15 @@ fun FolderContentScreen(
 
     LaunchedEffect(mediaType, typedList) {
         if (typedList == null) {
+            // 修复：等待 SettingsStore 恢复完成后再读配置。
+            // 若在加载前直接用 settings.pdfTreeUri（默认 null）触发 load，
+            // 会缓存"PDF 无目录=空列表"的错误结果，导致设置目录后仍显示空。
+            container.settingsStore.awaitLoaded()
+            val s = container.settingsStore.flow.value
             container.mediaRepository.load(
                 type = mediaType,
-                excludedPaths = settings.excludedPaths,
-                pdfTreeUri = settings.pdfTreeUri
+                excludedPaths = s.excludedPaths,
+                pdfTreeUri = s.pdfTreeUri
             )
         }
     }
@@ -128,12 +133,7 @@ fun FolderContentScreen(
             currentIndex = index,
             sourceType = folder.type
         )
-        when (folder.type) {
-            MediaType.MUSIC -> onNavigate(Screen.MusicPlayer(cursor))
-            MediaType.IMAGE -> onNavigate(Screen.ImageViewer(cursor))
-            MediaType.VIDEO -> onNavigate(Screen.VideoPlayer(cursor))
-            MediaType.PDF -> onNavigate(Screen.PdfViewer(cursor))
-        }
+        onNavigate(Screen.fromCursor(cursor))
     }
 
     val scope = rememberCoroutineScope()
@@ -174,11 +174,13 @@ fun FolderContentScreen(
                 isRefreshing = true
                 scope.launch {
                     try {
+                        container.settingsStore.awaitLoaded()
+                        val s = container.settingsStore.flow.value
                         container.mediaRepository.load(
                             type = mediaType,
                             forceRefresh = true,
-                            excludedPaths = settings.excludedPaths,
-                            pdfTreeUri = settings.pdfTreeUri
+                            excludedPaths = s.excludedPaths,
+                            pdfTreeUri = s.pdfTreeUri
                         )
                     } finally {
                         isRefreshing = false

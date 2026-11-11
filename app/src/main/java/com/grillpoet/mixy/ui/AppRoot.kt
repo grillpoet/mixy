@@ -18,20 +18,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.grillpoet.mixy.AppContainer
 import com.grillpoet.mixy.data.ExternalUriResolver
-import com.grillpoet.mixy.data.model.MediaType
 import com.grillpoet.mixy.ui.nav.Navigator
 import com.grillpoet.mixy.ui.nav.Screen
 import com.grillpoet.mixy.ui.folder.FolderContentScreen
 import com.grillpoet.mixy.ui.folder.FolderListScreen
 import com.grillpoet.mixy.ui.image.ImageViewerScreen
 import com.grillpoet.mixy.ui.music.MusicPlayerScreen
+import com.grillpoet.mixy.ui.music.MusicPlayerViewModel
 import com.grillpoet.mixy.ui.music.components.MiniBar
 import com.grillpoet.mixy.ui.pdf.PdfViewerScreen
 import com.grillpoet.mixy.ui.settings.ExcludedPathsScreen
 import com.grillpoet.mixy.ui.settings.SettingsScreen
 import com.grillpoet.mixy.ui.video.VideoPlayerScreen
+import com.grillpoet.mixy.ui.video.VideoPlayerViewModel
 
 /** MiniBar 高度估算（封面 40dp + 上下 padding 6+6 + 阴影余量）。 */
 private val MINI_BAR_SPACE = 72.dp
@@ -49,21 +51,12 @@ fun AppRoot(container: AppContainer) {
     val context = LocalContext.current
     val saveableStateHolder = rememberSaveableStateHolder()
 
-    // 用 collectAsState 订阅，不用 StateFlow.value：
-    // 后者在 composition 内读会被 lint 拦，且值变化不触发重组。
     val musicState by container.musicPlayerController.state.collectAsState()
 
     LaunchedEffect(container) {
-        // Channel 保证每个 URI 只处理一次，重组不会重复触发。
         container.playbackSession.externalUri.collect { uri ->
             val cursor = ExternalUriResolver.toCursor(context, uri) ?: return@collect
-            val target = when (cursor.sourceType) {
-                MediaType.IMAGE -> Screen.ImageViewer(cursor)
-                MediaType.VIDEO -> Screen.VideoPlayer(cursor)
-                MediaType.MUSIC -> Screen.MusicPlayer(cursor)
-                MediaType.PDF -> Screen.PdfViewer(cursor)
-            }
-            nav.push(target)
+            nav.push(Screen.fromCursor(cursor))
         }
     }
 
@@ -82,10 +75,8 @@ fun AppRoot(container: AppContainer) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
-                // 列表类页面底部预留 MiniBar 高度，避免最后一项被遮挡。
                 .padding(bottom = if (reserveBottom) MINI_BAR_SPACE else 0.dp)
         ) {
-            // current 是 val，分支内直接 smart cast，不再引入 screen 变量。
             when (current) {
                 is Screen.FolderList ->
                     saveableStateHolder.SaveableStateProvider("folder_list") {
@@ -121,9 +112,11 @@ fun AppRoot(container: AppContainer) {
 
                 is Screen.MusicPlayer ->
                     saveableStateHolder.SaveableStateProvider("music_player") {
+                        val vm: MusicPlayerViewModel =
+                            viewModel(factory = container.viewModelFactory)
                         MusicPlayerScreen(
                             cursor = current.cursor,
-                            container = container,
+                            musicVm = vm,
                             onBack = { nav.pop() }
                         )
                     }
@@ -134,9 +127,13 @@ fun AppRoot(container: AppContainer) {
 
                 is Screen.VideoPlayer ->
                     saveableStateHolder.SaveableStateProvider("video_player") {
+                        val vm: VideoPlayerViewModel =
+                            viewModel(factory = container.viewModelFactory)
                         VideoPlayerScreen(
                             cursor = current.cursor,
-                            container = container,
+                            videoVm = vm,
+                            settingsFlow = container.settingsStore.flow,
+                            onStopMusic = { container.stopMusicForVideo() },
                             onBack = { nav.pop() }
                         )
                     }
@@ -145,19 +142,17 @@ fun AppRoot(container: AppContainer) {
                     saveableStateHolder.SaveableStateProvider("pdf_viewer") {
                         PdfViewerScreen(
                             cursor = current.cursor,
-                            container = container,
+                            defaultLayout = container.settingsStore.flow.value.pdfDefaultLayout,
                             onBack = { nav.pop() }
                         )
                     }
             }
         }
 
-        // 只在列表类页面显示 MiniBar。全屏媒体页一律不显示。
         if (current.hostsMiniBar()) {
             MiniBar(
                 container = container,
                 onOpenPlayer = {
-                    // 事件回调，不是 composition 期间，读 .value 合法且能拿到最新值。
                     val cursor = container.musicPlayerController.state.value?.cursor
                         ?: container.playbackSession.lastMusicCursor.value
                         ?: return@MiniBar

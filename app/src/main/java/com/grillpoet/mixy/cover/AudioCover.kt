@@ -16,17 +16,9 @@ import kotlinx.coroutines.withContext
 import okio.Buffer
 import okio.FileSystem
 
-/**
- * 音频内嵌封面包装。UI 层通过 `AsyncImage(model = AudioCover(uri))` 触发加载。
- *
- * 为什么要包装而不是直接用 Uri：Coil 默认的 Uri Fetcher 会把内容当图片解码，
- * 而音频文件里的封面需要先经过 MediaMetadataRetriever 抽取内嵌标签。
- * 用一个独立类型做标记，可以精确拦截，避免污染其他类型。
- */
 @JvmInline
 value class AudioCover(val uri: Uri)
 
-/** 从音频文件的内嵌标签抽取封面（MP3 ID3 / FLAC PICTURE / M4A covr 等）。 */
 class AudioCoverFetcher(
     private val context: Context,
     private val uri: Uri,
@@ -66,7 +58,16 @@ class AudioCoverFetcher(
     }
 }
 
-/** 让内存缓存按 URI 生效。不写 Keyer 会导致列表滚动时封面闪烁。 */
+/**
+ * 音频封面 Keyer。
+ *
+ * Coil 的内存缓存需要 Keyer 为自定义类型生成缓存键。没有 Keyer 时，
+ * 即使 Fetcher 返回了数据，Coil 也无法把解码结果存入内存缓存，
+ * 列表滚动会反复走 MediaMetadataRetriever（慢且耗电）。
+ *
+ * 键直接用 URI：同一音频文件的封面应命中同一条缓存，
+ * 不同文件生成不同键。
+ */
 class AudioCoverKeyer : Keyer<AudioCover> {
     override fun key(data: AudioCover, options: Options): String =
         "audio_cover:${data.uri}"
